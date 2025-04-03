@@ -5,8 +5,7 @@ CREATE TABLE csv_raw (
     line TEXT
 );
 
--- Import the entire CSV file as raw text, turning off strict CSV parsing
-SET csvparsing TO 'off';
+-- Import the entire CSV file as raw text
 \echo 'Importing CSV data as raw text...'
 COPY csv_raw FROM '/transactions.csv';
 
