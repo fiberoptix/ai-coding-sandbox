@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Tagger</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .tag-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .tag-form {
+            margin: 0;
+            display: flex;
+        }
+        .tag-submit {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+        .tag-submit:hover {
+            background-color: #45a049;
+        }
+        .stats {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #e7f3e8;
+            border-radius: 4px;
+        }
+        .highlight {
+            background-color: #ffffcc;
+        }
+        .search-box {
+            padding: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Transaction Tagger</h1>
+        <p>Tag your transactions to categorize spending patterns.</p>
+        
+        <input type="text" id="searchBox" class="search-box" placeholder="Search descriptions..." onkeyup="filterTable()">
+        
+        <div style="max-height: 600px; overflow-y: auto;">
+            <table id="transactionTable">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Vendor</th>
+                        <th>Count</th>
+                        <th>Total Amount</th>
+                        <th>Tag</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pair in transaction_pairs %}
+                    <tr>
+                        <td>{{ pair.description }}</td>
+                        <td>{{ pair.vendor }}</td>
+                        <td>{{ pair.count }}</td>
+                        <td>${{ "%.2f"|format(pair.total_amount) }}</td>
+                        <td>
+                            <form class="tag-form" action="/update_tag" method="post">
+                                <input type="hidden" name="description" value="{{ pair.description }}">
+                                <input type="hidden" name="vendor" value="{{ pair.vendor }}">
+                                <input type="text" name="tag" class="tag-input" 
+                                       value="{{ existing_tags.get((pair.description, pair.vendor), '') }}" 
+                                       placeholder="Enter tag...">
+                                <button type="submit" class="tag-submit">Save</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="stats">
+            <h3>Statistics</h3>
+            <p>Total unique transactions: {{ transaction_pairs|length }}</p>
+            <p>Total tagged: {{ existing_tags|length }}</p>
+            <p>Remaining to tag: {{ transaction_pairs|length - existing_tags|length }}</p>
+        </div>
+    </div>
+
+    <script>
+        function filterTable() {
+            const input = document.getElementById('searchBox');
+            const filter = input.value.toUpperCase();
+            const table = document.getElementById('transactionTable');
+            const rows = table.getElementsByTagName('tr');
+
+            for (let i = 1; i < rows.length; i++) {
+                const descriptionCell = rows[i].getElementsByTagName('td')[0];
+                const vendorCell = rows[i].getElementsByTagName('td')[1];
+                
+                if (descriptionCell && vendorCell) {
+                    const descriptionText = descriptionCell.textContent || descriptionCell.innerText;
+                    const vendorText = vendorCell.textContent || vendorCell.innerText;
+                    
+                    if (descriptionText.toUpperCase().indexOf(filter) > -1 || 
+                        vendorText.toUpperCase().indexOf(filter) > -1) {
+                        rows[i].style.display = '';
+                    } else {
+                        rows[i].style.display = 'none';
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html> 
