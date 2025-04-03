@@ -16,6 +16,12 @@ def read_csv_file(file_path):
         # Open the file at file_path in read mode and assign it to variable csv_file
         with open(file_path, 'r') as csv_file:
             # Create a DictReader object that will read each row as a dictionary where column names are the keys
+            # DictReader is a special CSV reader that automatically converts each row into a dictionary
+            # The first row of the CSV is assumed to contain column headers
+            # These headers become the dictionary keys, and the row values become the dictionary values
+            # For example, a row "James,Smith,New York,100000" becomes 
+            # {'FIRST': 'James', 'LAST': 'Smith', 'CITY': 'New York', 'SALARY': '100000'}
+            # This makes accessing data much easier than using numeric indices
             csv_reader = csv.DictReader(csv_file)
             # Loop through each row in the CSV file
             for row in csv_reader:
