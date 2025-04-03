@@ -8,6 +8,10 @@ def read_csv_file(file_path):
     """Read CSV file and return its contents as a list of dictionaries."""
     # Create an empty list to store our data
     data = []
+    # Start a try/except block for error handling
+    # 'try' lets us attempt risky operations (like file operations) that might fail
+    # If an error occurs in the try block, Python will jump to the 'except' block
+    # instead of crashing the program
     try:
         # Open the file at file_path in read mode and assign it to variable csv_file
         with open(file_path, 'r') as csv_file:
