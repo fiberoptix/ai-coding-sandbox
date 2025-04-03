@@ -62,6 +62,7 @@ DECLARE
     sql_insert TEXT;
     row_record RECORD;
     i INTEGER;
+    column_name TEXT;
 BEGIN
     -- Get the header row
     SELECT line INTO header_row FROM csv_raw LIMIT 1;
