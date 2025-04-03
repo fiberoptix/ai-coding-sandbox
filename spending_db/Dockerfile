@@ -7,7 +7,7 @@ ENV POSTGRES_PASSWORD=postgres
 ENV POSTGRES_DB=spending_db
 
 # Copy CSV file to the container
-COPY transactions.csv /transactions.csv
+COPY transactions_test.csv /transactions.csv
 
 # Copy the initialization script
 COPY init.sql /docker-entrypoint-initdb.d/
