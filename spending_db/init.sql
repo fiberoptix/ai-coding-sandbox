@@ -7,28 +7,63 @@ DECLARE
     column_names text;
     column_list text;
     create_stmt text;
+    header_row text;
 BEGIN
-    -- Create temporary table with a single column to read the header
-    CREATE TEMP TABLE csv_headers (header text);
+    -- Create temporary table with a single text column to read the header
+    CREATE TEMP TABLE csv_raw_header (line text);
     
-    -- Import just the first line (header) from the CSV
-    EXECUTE 'COPY csv_headers FROM ''/transactions.csv'' CSV HEADER LIMIT 0';
+    -- Import just the first row of the CSV to get the header
+    EXECUTE 'COPY csv_raw_header FROM ''/transactions.csv'' CSV HEADER LIMIT 1';
     
-    -- Get column names from the temporary import
-    SELECT string_agg(column_name, ', ')
-    INTO column_names
-    FROM information_schema.columns
-    WHERE table_name = 'csv_headers' AND table_schema = 'pg_temp';
+    -- Extract the header row
+    SELECT line INTO header_row FROM csv_raw_header LIMIT 1;
     
-    -- Drop the temporary table
-    DROP TABLE csv_headers;
-    
-    -- Generate column definition for each column in the CSV
-    SELECT string_agg(quote_ident(column_name) || ' TEXT', ', ')
+    -- Create column list based on the comma-separated header
+    SELECT string_agg(quote_ident(trim(column_name)) || ' TEXT', ', ')
     INTO column_list
     FROM (
-        SELECT trim(unnest(string_to_array(column_names, ','))) as column_name
+        SELECT unnest(string_to_array(header_row, ',')) as column_name
     ) subq;
+    
+    -- If we couldn't get the header, try a different approach
+    IF column_list IS NULL THEN
+        -- Create a simple temp table with default columns
+        CREATE TEMP TABLE temp_transactions (
+            date TEXT,
+            category TEXT,
+            description TEXT,
+            amount TEXT
+        );
+        
+        -- Try to copy the data and see what columns are actually used
+        BEGIN
+            EXECUTE 'COPY temp_transactions FROM ''/transactions.csv'' CSV HEADER';
+            
+            -- Get the column names from the temp table
+            SELECT string_agg(column_name, ', ')
+            INTO column_names
+            FROM information_schema.columns
+            WHERE table_name = 'temp_transactions' AND table_schema = 'pg_temp';
+            
+            -- Generate column definition
+            SELECT string_agg(quote_ident(column_name) || ' TEXT', ', ')
+            INTO column_list
+            FROM information_schema.columns
+            WHERE table_name = 'temp_transactions' AND table_schema = 'pg_temp';
+        EXCEPTION
+            WHEN OTHERS THEN
+                RAISE NOTICE 'Could not automatically determine CSV structure: %', SQLERRM;
+                -- Default to common columns
+                column_list := 'date TEXT, category TEXT, description TEXT, amount TEXT';
+                column_names := 'date, category, description, amount';
+        END;
+    ELSE
+        -- Use the column names we extracted from the header
+        column_names := string_agg(quote_ident(trim(column_name)), ', ')
+        FROM (
+            SELECT unnest(string_to_array(header_row, ',')) as column_name
+        ) subq;
+    END IF;
     
     -- Drop existing tables if they exist
     DROP TABLE IF EXISTS transactions;
@@ -38,7 +73,13 @@ BEGIN
     EXECUTE 'CREATE TEMP TABLE temp_transactions (' || column_list || ')';
     
     -- Import data from CSV into temp table
-    EXECUTE 'COPY temp_transactions FROM ''/transactions.csv'' CSV HEADER';
+    BEGIN
+        EXECUTE 'COPY temp_transactions FROM ''/transactions.csv'' CSV HEADER';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE NOTICE 'Error importing CSV: %', SQLERRM;
+            RETURN;
+    END;
     
     -- Create final transactions table with appropriate column types
     -- We'll use TEXT initially for all columns, and can refine data types later
@@ -47,8 +88,9 @@ BEGIN
     -- Insert data from temp to main table
     EXECUTE 'INSERT INTO transactions (' || column_names || ') SELECT ' || column_names || ' FROM temp_transactions';
     
-    -- Drop the temporary table
-    DROP TABLE temp_transactions;
+    -- Drop the temporary tables
+    DROP TABLE IF EXISTS temp_transactions;
+    DROP TABLE IF EXISTS csv_raw_header;
     
     RAISE NOTICE 'Transactions table created and populated successfully';
 END;
