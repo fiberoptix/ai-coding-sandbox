@@ -1266,6 +1266,8 @@ def import_records():
         try:
             # Read the CSV data
             csv_data = file.read().decode('utf-8')
+            # Clean up any unexpected characters
+            csv_data = csv_data.replace('%', '')  # Remove % characters
             lines = csv_data.strip().split('\n')
             
             # Skip header line
@@ -1283,38 +1285,55 @@ def import_records():
                 
                 # Process each line
                 records_imported = 0
+                errors = 0
+                
                 for line in data_lines:
-                    # Handle quoted fields with commas
-                    parts = []
-                    in_quotes = False
-                    current_part = ''
-                    for char in line:
-                        if char == '"':
-                            in_quotes = not in_quotes
-                        elif char == ',' and not in_quotes:
-                            parts.append(current_part)
-                            current_part = ''
-                        else:
-                            current_part += char
-                    parts.append(current_part)
-                    
-                    if len(parts) >= 4:  # Need at least date, description, vendor, amount
-                        date = parts[0].strip().strip('"')
-                        description = parts[1].strip().strip('"')
-                        vendor = parts[2].strip().strip('"')
-                        amount = parts[3].strip().strip('"')
+                    try:
+                        # Skip empty lines
+                        if not line.strip():
+                            continue
+                            
+                        # Handle quoted fields with commas
+                        parts = []
+                        in_quotes = False
+                        current_part = ''
+                        for char in line:
+                            if char == '"':
+                                in_quotes = not in_quotes
+                            elif char == ',' and not in_quotes:
+                                parts.append(current_part)
+                                current_part = ''
+                            else:
+                                current_part += char
+                        parts.append(current_part)
                         
-                        # Insert into records_imported
-                        cur.execute("""
-                            INSERT INTO records_imported (date, description, vendor, amount)
-                            VALUES (%s, %s, %s, %s)
-                            ON CONFLICT DO NOTHING
-                        """, (date, description, vendor, amount))
-                        records_imported += 1
+                        # Ensure we have enough parts (at least date, description, vendor, amount)
+                        if len(parts) >= 4:
+                            date = parts[0].strip().strip('"')
+                            description = parts[1].strip().strip('"')
+                            vendor = parts[2].strip().strip('"')
+                            amount = parts[3].strip().strip('"')
+                            
+                            # Insert into records_imported
+                            cur.execute("""
+                                INSERT INTO records_imported (date, description, vendor, amount)
+                                VALUES (%s, %s, %s, %s)
+                                ON CONFLICT DO NOTHING
+                            """, (date, description, vendor, amount))
+                            records_imported += 1
+                        else:
+                            errors += 1
+                            print(f"Skipping invalid line: {line} - not enough fields ({len(parts)})")
+                    except Exception as line_error:
+                        errors += 1
+                        print(f"Error processing line: {line} - {str(line_error)}")
                 
                 conn.commit()
                 cur.close()
                 conn.close()
+                
+                # Log import results
+                print(f"Import complete: {records_imported} records imported, {errors} errors")
                 
                 # Auto-apply tags to newly imported records
                 if records_imported > 0:
@@ -1324,6 +1343,9 @@ def import_records():
                 return redirect(url_for('index', records_imported=records_imported))
                 
         except Exception as e:
+            import traceback
+            print(f"Error importing records: {str(e)}")
+            traceback.print_exc()
             return f"Error importing records: {str(e)}"
     
     return redirect(url_for('index'))
