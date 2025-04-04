@@ -46,7 +46,7 @@ RUN mkdir -p /var/lib/postgresql/data && \
 # Create app directory
 WORKDIR /app
 
-# Create sample data directory
+# Create an empty sample directory for uploads
 RUN mkdir -p /app/sample_data
 
 # Copy application files
@@ -54,9 +54,6 @@ COPY full-app.py /app/
 COPY init.sql /app/
 COPY templates/ /app/templates/
 COPY requirements.txt /app/
-
-# Move transaction.csv to sample_data directory (instead of root)
-COPY transactions.csv /app/sample_data/
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \

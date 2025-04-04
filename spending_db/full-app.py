@@ -464,7 +464,7 @@ HTML_TEMPLATE = """
                     <tr>
                         <td>{{ pair.description }}</td>
                         <td>{{ pair.count }}</td>
-                        <td>{% if pair.total_amount < 0 %}-{% endif %}${{ '{:.2f}'.format(pair.total_amount|abs) }}</td>
+                        <td>{{ pair.total }}</td>
                         <td>
                             <form class="tag-form" action="/update_tag" method="post">
                                 <input type="hidden" name="description" value="{{ pair.description }}">
@@ -643,13 +643,19 @@ def index():
                 'description': description,
                 'vendor': vendor,
                 'count': count,
-                'total_amount': float(total) if total is not None else 0.0,
+                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
                 'tag': tag or ''
             })
         
-        # Get existing tags for autocomplete
+        # Get existing tags for autocomplete and for template
+        cur.execute("SELECT description, tag FROM tags ORDER BY tag")
+        existing_tags = {}
+        for row in cur.fetchall():
+            existing_tags[row[0]] = row[1]
+        
+        # Get unique tag values for autocomplete
         cur.execute("SELECT DISTINCT tag FROM tags WHERE tag IS NOT NULL AND tag != '' ORDER BY tag")
-        existing_tags = [row[0] for row in cur.fetchall()]
+        tag_values = [row[0] for row in cur.fetchall()]
         
         cur.close()
         conn.close()
@@ -657,6 +663,7 @@ def index():
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
+                                    tag_values=tag_values,
                                     page=page,
                                     total_pages=total_pages,
                                     search=search,
@@ -985,13 +992,19 @@ def most_common():
                 'description': description,
                 'vendor': vendor,
                 'count': count,
-                'total_amount': float(total) if total is not None else 0.0,
+                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
                 'tag': tag or ''
             })
         
-        # Get existing tags for autocomplete
+        # Get existing tags for autocomplete and for template
+        cur.execute("SELECT description, tag FROM tags ORDER BY tag")
+        existing_tags = {}
+        for row in cur.fetchall():
+            existing_tags[row[0]] = row[1]
+        
+        # Get unique tag values for autocomplete
         cur.execute("SELECT DISTINCT tag FROM tags WHERE tag IS NOT NULL AND tag != '' ORDER BY tag")
-        existing_tags = [row[0] for row in cur.fetchall()]
+        tag_values = [row[0] for row in cur.fetchall()]
         
         cur.close()
         conn.close()
@@ -999,6 +1012,7 @@ def most_common():
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
+                                    tag_values=tag_values,
                                     page=page,
                                     total_pages=total_pages,
                                     search="",
