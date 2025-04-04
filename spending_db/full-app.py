@@ -508,14 +508,23 @@ def index():
             }
             formatted_pairs.append(formatted_pair)
         
-        # Get existing tags
-        cur.execute("SELECT description, tag FROM transaction_tags")
+        # Get existing tags for current transactions only
+        cur.execute("""
+            SELECT tt.description, tt.tag 
+            FROM transaction_tags tt
+            JOIN transactions t ON tt.description = t.description
+        """)
         existing_tags = {row['description']: row['tag'] for row in cur.fetchall()}
         
-        # Get count of tagged pairs
-        tagged_count = len(existing_tags)
+        # Get count of tagged descriptions in current transactions
+        cur.execute("""
+            SELECT COUNT(DISTINCT tt.description) 
+            FROM transaction_tags tt
+            JOIN transactions t ON tt.description = t.description
+        """)
+        tagged_count = cur.fetchone()[0]
         
-        # Get count of untagged descriptions
+        # Get count of untagged descriptions in current transactions
         cur.execute("""
             SELECT COUNT(DISTINCT description) 
             FROM transactions 
@@ -824,16 +833,15 @@ def most_common():
         total_tagged_transactions = cur.fetchone()[0]
         
         # Base query to get unique descriptions ordered by count
-        # Modified to only show untagged descriptions
+        # Modified to only include descriptions from current transactions table
         query = """
         SELECT 
             t.description, 
             COUNT(*)::INTEGER as count, 
             SUM(CASE WHEN t.amount ~ '^-?[0-9.,]+$' THEN CAST(REPLACE(REPLACE(t.amount, ',', ''), '$', '') AS NUMERIC) ELSE 0 END) as total_amount
         FROM transactions t
-        WHERE t.description NOT IN (
-            SELECT description FROM transaction_tags
-        )
+        LEFT JOIN transaction_tags tt ON t.description = tt.description
+        WHERE tt.id IS NULL
         """
         
         params = []
@@ -876,14 +884,23 @@ def most_common():
             }
             formatted_pairs.append(formatted_pair)
         
-        # Get existing tags
-        cur.execute("SELECT description, tag FROM transaction_tags")
+        # Get existing tags for current transactions only
+        cur.execute("""
+            SELECT tt.description, tt.tag 
+            FROM transaction_tags tt
+            JOIN transactions t ON tt.description = t.description
+        """)
         existing_tags = {row['description']: row['tag'] for row in cur.fetchall()}
         
-        # Get count of tagged pairs
-        tagged_count = len(existing_tags)
+        # Get count of tagged descriptions in current transactions
+        cur.execute("""
+            SELECT COUNT(DISTINCT tt.description) 
+            FROM transaction_tags tt
+            JOIN transactions t ON tt.description = t.description
+        """)
+        tagged_count = cur.fetchone()[0]
         
-        # Get count of untagged descriptions
+        # Get count of untagged descriptions in current transactions
         cur.execute("""
             SELECT COUNT(DISTINCT description) 
             FROM transactions 
@@ -907,7 +924,7 @@ def most_common():
                                     total_pages=total_pages,
                                     search="",
                                     filter=filter_type,
-                                    auto_tagged=total_tagged_transactions,
+                                    auto_tagged=0,
                                     unique_tags_applied=0,
                                     total_transactions=total_transactions,
                                     tagged_count=tagged_count,
