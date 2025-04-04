@@ -460,20 +460,20 @@ HTML_TEMPLATE = """
                     </tr>
                 </thead>
                 <tbody>
-                    {% for pair in transaction_pairs %}
+                    {% for transaction in transactions %}
                     <tr>
-                        <td>{{ pair.description }}</td>
-                        <td>{{ pair.count }}</td>
-                        <td>{{ pair.total }}</td>
+                        <td>{{ transaction.description }}</td>
+                        <td>{{ transaction.count }}</td>
+                        <td>{{ transaction.total }}</td>
                         <td>
                             <form class="tag-form" action="/update_tag" method="post">
-                                <input type="hidden" name="description" value="{{ pair.description }}">
+                                <input type="hidden" name="description" value="{{ transaction.description }}">
                                 <input type="hidden" name="page" value="{{ page }}">
                                 <input type="hidden" name="search" value="{{ search }}">
                                 <input type="hidden" name="filter" value="{{ filter }}">
                                 <input type="hidden" name="from_page" value="{% if request.path == '/most_common' %}most_common{% else %}index{% endif %}">
                                 <input type="text" name="tag" class="tag-input" 
-                                      value="{{ existing_tags[pair.description] if pair.description in existing_tags else '' }}" 
+                                      value="{{ existing_tags[transaction.description] if transaction.description in existing_tags else '' }}" 
                                        placeholder="Enter tag...">
                                 <button type="submit" class="tag-submit">Save</button>
                             </form>
@@ -623,8 +623,8 @@ def index():
         # Execute count query for pagination
         count_query = "SELECT COUNT(*) FROM (" + query + ") as subquery"
         cur.execute(count_query, params)
-        total_pairs = cur.fetchone()[0]
-        total_pages = (total_pairs + items_per_page - 1) // items_per_page
+        total_items = cur.fetchone()[0]
+        total_pages = (total_items + items_per_page - 1) // items_per_page
         
         # Add pagination
         query += " LIMIT %s OFFSET %s"
@@ -633,13 +633,13 @@ def index():
         
         # Execute final query
         cur.execute(query, params)
-        transaction_pairs = cur.fetchall()
+        transaction_data = cur.fetchall()
         
         # Format the results for display
-        formatted_pairs = []
-        for pair in transaction_pairs:
-            description, vendor, count, total, tag = pair
-            formatted_pairs.append({
+        formatted_transactions = []
+        for item in transaction_data:
+            description, vendor, count, total, tag = item
+            formatted_transactions.append({
                 'description': description,
                 'vendor': vendor,
                 'count': count,
@@ -661,7 +661,7 @@ def index():
         conn.close()
         
         return render_template_string(HTML_TEMPLATE, 
-                                    transaction_pairs=formatted_pairs,
+                                    transactions=formatted_transactions,
                                     existing_tags=existing_tags,
                                     tag_values=tag_values,
                                     page=page,
@@ -972,8 +972,8 @@ def most_common():
         # Count total results for pagination
         count_query = "SELECT COUNT(*) FROM (" + query + ") as subquery"
         cur.execute(count_query, params)
-        total_pairs = cur.fetchone()[0]
-        total_pages = (total_pairs + items_per_page - 1) // items_per_page
+        total_items = cur.fetchone()[0]
+        total_pages = (total_items + items_per_page - 1) // items_per_page
         
         # Add pagination
         query += " LIMIT %s OFFSET %s"
@@ -982,13 +982,13 @@ def most_common():
         
         # Execute query
         cur.execute(query, params)
-        transaction_pairs = cur.fetchall()
+        transaction_data = cur.fetchall()
         
         # Format for display
-        formatted_pairs = []
-        for pair in transaction_pairs:
-            description, vendor, count, total, tag = pair
-            formatted_pairs.append({
+        formatted_transactions = []
+        for item in transaction_data:
+            description, vendor, count, total, tag = item
+            formatted_transactions.append({
                 'description': description,
                 'vendor': vendor,
                 'count': count,
@@ -1010,7 +1010,7 @@ def most_common():
         conn.close()
         
         return render_template_string(HTML_TEMPLATE, 
-                                    transaction_pairs=formatted_pairs,
+                                    transactions=formatted_transactions,
                                     existing_tags=existing_tags,
                                     tag_values=tag_values,
                                     page=page,
