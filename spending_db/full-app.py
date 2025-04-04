@@ -295,8 +295,8 @@ HTML_TEMPLATE = """
         {% endif %}
         
         {% if moved_count and moved_count > 0 %}
-        <div class="alert" style="background-color: #ffe8d6; color: #8b4513;">
-            <p>{{ moved_count }} transactions moved to transaction_history table successfully!</p>
+        <div class="alert" style="background-color: #d4edda; color: #155724; padding: 15px; margin-bottom: 15px; border-radius: 4px;">
+            <strong>Success!</strong> {{ moved_count }} transactions moved to history.
             <p><small>Tagged transactions have been moved to the persistent history table and removed from the current working set.</small></p>
         </div>
         {% endif %}
@@ -400,6 +400,16 @@ HTML_TEMPLATE = """
             <a href="/export_tags" download="transaction_tags.csv">Export Tags as CSV</a>
             <span style="margin: 0 10px;">|</span>
             <a href="/export_history" download="transaction_history.csv">Export All Historical Transactions as CSV</a>
+            <div style="margin-top: 15px;">
+                <form action="/import_tags" method="post" enctype="multipart/form-data">
+                    <input type="file" name="tags_file" accept=".csv" required style="display: inline-block;">
+                    <button type="submit" style="padding: 5px 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Tags</button>
+                </form>
+                <form action="/import_history" method="post" enctype="multipart/form-data" style="margin-top: 5px;">
+                    <input type="file" name="history_file" accept=".csv" required style="display: inline-block;">
+                    <button type="submit" style="padding: 5px 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Import History</button>
+                </form>
+            </div>
         </div>
     </div>
 </body>
@@ -413,6 +423,9 @@ def index():
     auto_tagged = request.args.get('auto_tagged', 0, type=int)
     unique_tags_applied = request.args.get('unique_tags_applied', 0, type=int)
     moved_count = request.args.get('moved_count', 0, type=int)
+    tags_imported = request.args.get('tags_imported', 0, type=int)
+    history_imported = request.args.get('history_imported', 0, type=int)
+    cleared = request.args.get('cleared', '')
     page = request.args.get('page', 1, type=int)
     items_per_page = 100
     
@@ -566,6 +579,9 @@ def index():
                                     tags_count=tags_count,
                                     total_unique_descriptions=total_unique_descriptions,
                                     moved_count=moved_count,
+                                    tags_imported=tags_imported,
+                                    history_imported=history_imported,
+                                    cleared=cleared,
                                     remaining_to_tag=remaining_to_tag)
               
     except Exception as e:
@@ -1046,6 +1062,170 @@ def export_history():
         
     except Exception as e:
         return f"Error exporting history: {str(e)}"
+
+@app.route('/import_tags', methods=['POST'])
+def import_tags():
+    """Import tags from a CSV file"""
+    if 'tags_file' not in request.files:
+        return redirect(url_for('index'))
+    
+    file = request.files['tags_file']
+    if file.filename == '':
+        return redirect(url_for('index'))
+    
+    if file:
+        try:
+            # Read the CSV data
+            csv_data = file.read().decode('utf-8')
+            lines = csv_data.strip().split('\n')
+            
+            # Skip header line
+            if len(lines) > 1:
+                header = lines[0]
+                data_lines = lines[1:]
+                
+                conn = get_db_connection()
+                cur = conn.cursor()
+                
+                # Clear existing tags if requested
+                clear_existing = request.form.get('clear_existing') == 'yes'
+                if clear_existing:
+                    cur.execute("TRUNCATE transaction_tags")
+                
+                # Process each line
+                tags_imported = 0
+                for line in data_lines:
+                    # Handle quoted fields with commas
+                    parts = []
+                    in_quotes = False
+                    current_part = ''
+                    for char in line:
+                        if char == '"':
+                            in_quotes = not in_quotes
+                        elif char == ',' and not in_quotes:
+                            parts.append(current_part)
+                            current_part = ''
+                        else:
+                            current_part += char
+                    parts.append(current_part)
+                    
+                    if len(parts) >= 2:
+                        description = parts[0].strip().strip('"')
+                        tag = parts[1].strip().strip('"')
+                        
+                        # Insert or update tag
+                        cur.execute("""
+                            INSERT INTO transaction_tags (description, tag)
+                            VALUES (%s, %s)
+                            ON CONFLICT (description) 
+                            DO UPDATE SET tag = EXCLUDED.tag
+                        """, (description, tag))
+                        tags_imported += 1
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                return redirect(url_for('index', tags_imported=tags_imported))
+                
+        except Exception as e:
+            return f"Error importing tags: {str(e)}"
+    
+    return redirect(url_for('index'))
+
+@app.route('/import_history', methods=['POST'])
+def import_history():
+    """Import transaction history from a CSV file"""
+    if 'history_file' not in request.files:
+        return redirect(url_for('index'))
+    
+    file = request.files['history_file']
+    if file.filename == '':
+        return redirect(url_for('index'))
+    
+    if file:
+        try:
+            # Read the CSV data
+            csv_data = file.read().decode('utf-8')
+            lines = csv_data.strip().split('\n')
+            
+            # Skip header line
+            if len(lines) > 1:
+                header = lines[0]
+                data_lines = lines[1:]
+                
+                conn = get_db_connection()
+                cur = conn.cursor()
+                
+                # Clear existing history if requested
+                clear_existing = request.form.get('clear_existing') == 'yes'
+                if clear_existing:
+                    cur.execute("TRUNCATE transaction_history")
+                
+                # Process each line
+                history_imported = 0
+                for line in data_lines:
+                    # Handle quoted fields with commas
+                    parts = []
+                    in_quotes = False
+                    current_part = ''
+                    for char in line:
+                        if char == '"':
+                            in_quotes = not in_quotes
+                        elif char == ',' and not in_quotes:
+                            parts.append(current_part)
+                            current_part = ''
+                        else:
+                            current_part += char
+                    parts.append(current_part)
+                    
+                    if len(parts) >= 5:  # At least date, description, vendor, amount, tag
+                        date = parts[0].strip().strip('"')
+                        description = parts[1].strip().strip('"')
+                        vendor = parts[2].strip().strip('"')
+                        amount = parts[3].strip().strip('"')
+                        tag = parts[4].strip().strip('"')
+                        
+                        # Insert into transaction_history
+                        cur.execute("""
+                            INSERT INTO transaction_history (date, description, vendor, amount, tag)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT DO NOTHING
+                        """, (date, description, vendor, amount, tag))
+                        history_imported += 1
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                return redirect(url_for('index', history_imported=history_imported))
+                
+        except Exception as e:
+            return f"Error importing history: {str(e)}"
+    
+    return redirect(url_for('index'))
+
+@app.route('/clear_database', methods=['POST'])
+def clear_database():
+    """Clear database tables"""
+    try:
+        tables_to_clear = request.form.getlist('tables')
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        for table in tables_to_clear:
+            if table in ['transactions', 'transaction_tags', 'transaction_history']:
+                cur.execute(f"TRUNCATE {table}")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return redirect(url_for('index', cleared=','.join(tables_to_clear)))
+        
+    except Exception as e:
+        return f"Error clearing tables: {str(e)}"
 
 if __name__ == '__main__':
     # Initialize database tables
