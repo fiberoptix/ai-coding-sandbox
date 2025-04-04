@@ -98,14 +98,38 @@ def initialize_database():
             ON CONFLICT DO NOTHING
         """)
     
+    # Check if transactions table exists and has the right column names
     cur.execute("SELECT to_regclass('public.transactions')")
     if cur.fetchone()[0] is not None:
-        print("Migrating transactions to records_imported...")
+        print("Checking transactions table columns...")
+        # Get column names from transactions table
         cur.execute("""
-            INSERT INTO records_imported (date, description, vendor, amount)
-            SELECT date, description, vendor, amount FROM transactions
-            ON CONFLICT DO NOTHING
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'transactions'
+            ORDER BY ordinal_position
         """)
+        columns = [col[0] for col in cur.fetchall()]
+        
+        # Find date column name - could be 'date' or '_date'
+        date_column = None
+        for col in columns:
+            if col == 'date' or col == '_date':
+                date_column = col
+                break
+        
+        if date_column:
+            print(f"Found date column: {date_column}")
+            print("Migrating transactions to records_imported...")
+            # Build dynamic query with the correct column name
+            migration_query = f"""
+                INSERT INTO records_imported (date, description, vendor, amount)
+                SELECT {date_column}, description, vendor, amount FROM transactions
+                ON CONFLICT DO NOTHING
+            """
+            cur.execute(migration_query)
+        else:
+            print("Warning: Could not find date column in transactions table.")
     
     conn.commit()
     cur.close()
@@ -608,7 +632,13 @@ def index():
         
         # Base query for unique description:vendor pairs and their counts
         query = """
-            SELECT t.description, t.vendor, COUNT(*) as count, SUM(t.amount::numeric) as total, tt.tag
+            SELECT t.description, t.vendor, COUNT(*) as count, SUM(
+                CASE 
+                    WHEN t.amount ~ '^-?[0-9.,$]+$' 
+                    THEN REPLACE(REPLACE(t.amount, ',', ''), '$', '')::numeric 
+                    ELSE 0 
+                END
+            ) as total, tt.tag
             FROM records_imported t
             LEFT JOIN tags tt ON t.description = tt.description
         """
@@ -950,7 +980,13 @@ def most_common():
         # Build the query for most common descriptions
         query = """
             SELECT t.description, t.vendor, COUNT(*) as count, 
-                   SUM(t.amount::numeric) as total_amount, 
+                   SUM(
+                       CASE 
+                           WHEN t.amount ~ '^-?[0-9.,$]+$' 
+                           THEN REPLACE(REPLACE(t.amount, ',', ''), '$', '')::numeric 
+                           ELSE 0 
+                       END
+                   ) as total_amount, 
                    tt.tag
             FROM records_imported t
             LEFT JOIN tags tt ON t.description = tt.description
