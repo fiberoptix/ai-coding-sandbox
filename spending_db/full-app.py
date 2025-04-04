@@ -643,7 +643,7 @@ def index():
                 'description': description,
                 'vendor': vendor,
                 'count': count,
-                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
+                'total_amount': float(total) if total is not None else 0.0,
                 'tag': tag or ''
             })
         
@@ -985,7 +985,7 @@ def most_common():
                 'description': description,
                 'vendor': vendor,
                 'count': count,
-                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
+                'total_amount': float(total) if total is not None else 0.0,
                 'tag': tag or ''
             })
         
