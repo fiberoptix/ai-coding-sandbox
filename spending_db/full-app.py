@@ -79,58 +79,6 @@ def initialize_database():
         )
     """)
     
-    # Handle migration from old table names if they exist
-    cur.execute("SELECT to_regclass('public.transaction_tags')")
-    if cur.fetchone()[0] is not None:
-        print("Migrating transaction_tags to tags...")
-        cur.execute("""
-            INSERT INTO tags (description, tag)
-            SELECT description, tag FROM transaction_tags
-            ON CONFLICT (description) DO NOTHING
-        """)
-    
-    cur.execute("SELECT to_regclass('public.transaction_history')")
-    if cur.fetchone()[0] is not None:
-        print("Migrating transaction_history to records_history...")
-        cur.execute("""
-            INSERT INTO records_history (date, description, vendor, amount, tag, imported_date)
-            SELECT date, description, vendor, amount, tag, imported_date FROM transaction_history
-            ON CONFLICT DO NOTHING
-        """)
-    
-    # Check if transactions table exists and has the right column names
-    cur.execute("SELECT to_regclass('public.transactions')")
-    if cur.fetchone()[0] is not None:
-        print("Checking transactions table columns...")
-        # Get column names from transactions table
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'transactions'
-            ORDER BY ordinal_position
-        """)
-        columns = [col[0] for col in cur.fetchall()]
-        
-        # Find date column name - could be 'date' or '_date'
-        date_column = None
-        for col in columns:
-            if col == 'date' or col == '_date':
-                date_column = col
-                break
-        
-        if date_column:
-            print(f"Found date column: {date_column}")
-            print("Migrating transactions to records_imported...")
-            # Build dynamic query with the correct column name
-            migration_query = f"""
-                INSERT INTO records_imported (date, description, vendor, amount)
-                SELECT {date_column}, description, vendor, amount FROM transactions
-                ON CONFLICT DO NOTHING
-            """
-            cur.execute(migration_query)
-        else:
-            print("Warning: Could not find date column in transactions table.")
-    
     conn.commit()
     cur.close()
     conn.close()
@@ -395,6 +343,8 @@ HTML_TEMPLATE = """
         <div class="btn-group">
             <a href="/"><button>Home</button></a>
             <a href="/most_common"><button>Most Common</button></a>
+            <a href="/monthly_summary"><button>Monthly Summary</button></a>
+            <a href="/tag_summary"><button>Tag Summary</button></a>
             <button class="btn-import" onclick="showImportForm()">Import New Records</button>
         </div>
         
@@ -1389,6 +1339,369 @@ def clear_database():
         
     except Exception as e:
         return f"Error clearing tables: {str(e)}"
+
+@app.route('/monthly_summary')
+def monthly_summary():
+    """Show monthly spending summary"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get build number
+        build_number = get_build_number()
+        
+        # Get monthly spending data
+        cur.execute("""
+            SELECT month, tag, total_amount, transaction_count 
+            FROM monthly_spending 
+            ORDER BY month DESC, total_amount
+        """)
+        monthly_data = cur.fetchall()
+        
+        # Format for display
+        formatted_months = []
+        current_month = None
+        month_group = None
+        
+        for row in monthly_data:
+            month, tag, total_amount, transaction_count = row
+            
+            if month != current_month:
+                if month_group:
+                    formatted_months.append(month_group)
+                month_group = {
+                    'month': month,
+                    'entries': [],
+                    'total': 0
+                }
+                current_month = month
+            
+            month_group['entries'].append({
+                'tag': tag or 'Untagged',
+                'amount': total_amount,
+                'count': transaction_count
+            })
+            month_group['total'] += float(total_amount) if total_amount else 0
+        
+        # Add the last month group
+        if month_group:
+            formatted_months.append(month_group)
+        
+        # Get the count of transactions in history
+        history_count = get_history_count()
+        
+        # Get count of unique tags
+        tags_count = get_tags_count()
+        
+        cur.close()
+        conn.close()
+        
+        return render_template_string(MONTHLY_TEMPLATE,
+                                     months=formatted_months,
+                                     history_count=history_count,
+                                     tags_count=tags_count,
+                                     build_number=build_number)
+    
+    except Exception as e:
+        return f"Error generating monthly summary: {str(e)}"
+
+@app.route('/tag_summary')
+def tag_summary_view():
+    """Show summary by tag"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get build number
+        build_number = get_build_number()
+        
+        # Get tag summary data
+        cur.execute("""
+            SELECT tag, total_amount, transaction_count 
+            FROM tag_summary 
+            ORDER BY total_amount
+        """)
+        tag_data = cur.fetchall()
+        
+        # Format for display
+        formatted_tags = []
+        total_amount = 0
+        
+        for row in tag_data:
+            tag, amount, count = row
+            formatted_tags.append({
+                'tag': tag or 'Untagged',
+                'amount': amount,
+                'count': count
+            })
+            total_amount += float(amount) if amount else 0
+        
+        # Get the count of transactions in history
+        history_count = get_history_count()
+        
+        cur.close()
+        conn.close()
+        
+        return render_template_string(TAG_SUMMARY_TEMPLATE,
+                                     tags=formatted_tags,
+                                     total_amount=total_amount,
+                                     history_count=history_count,
+                                     build_number=build_number)
+    
+    except Exception as e:
+        return f"Error generating tag summary: {str(e)}"
+
+# HTML template for monthly summary
+MONTHLY_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Monthly Spending Summary</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container {
+            width: 100%;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .month-card {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .month-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .month-total {
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .negative {
+            color: #d9534f;
+        }
+        .positive {
+            color: #5cb85c;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #007bff;
+        }
+        .build-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="build-info">Build: {{ build_number }}</div>
+    <div class="container">
+        <h1>Monthly Spending Summary</h1>
+        
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/tag_summary">Tag Summary</a>
+            <a href="/monthly_summary">Monthly Summary</a>
+        </div>
+        
+        <div>
+            <p>Total transactions in history: <strong>{{ history_count }}</strong></p>
+            <p>Total unique tags: <strong>{{ tags_count }}</strong></p>
+        </div>
+        
+        {% for month in months %}
+        <div class="month-card">
+            <div class="month-header">
+                <h2>{{ month.month }}</h2>
+                <span class="month-total {% if month.total < 0 %}negative{% else %}positive{% endif %}">
+                    Total: ${{ '{:,.2f}'.format(month.total|abs) }}
+                </span>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tag</th>
+                        <th>Amount</th>
+                        <th>Transactions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in month.entries %}
+                    <tr>
+                        <td>{{ entry.tag }}</td>
+                        <td {% if entry.amount < 0 %}class="negative"{% else %}class="positive"{% endif %}>
+                            ${{ '{:,.2f}'.format(entry.amount|abs) }}
+                        </td>
+                        <td>{{ entry.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="month-card">
+            <p>No monthly data available. Import your transaction history to see spending patterns by month.</p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
+"""
+
+# HTML template for tag summary
+TAG_SUMMARY_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tag Summary</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container {
+            width: 100%;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .tag-container {
+            margin-top: 20px;
+        }
+        .total-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f2f2f2;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .negative {
+            color: #d9534f;
+        }
+        .positive {
+            color: #5cb85c;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: #007bff;
+        }
+        .build-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="build-info">Build: {{ build_number }}</div>
+    <div class="container">
+        <h1>Tag Summary</h1>
+        
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/tag_summary">Tag Summary</a>
+            <a href="/monthly_summary">Monthly Summary</a>
+        </div>
+        
+        <div class="total-section">
+            <h3>Total: <span {% if total_amount < 0 %}class="negative"{% else %}class="positive"{% endif %}>
+                ${{ '{:,.2f}'.format(total_amount|abs) }}
+            </span></h3>
+            <p>Total transactions in history: <strong>{{ history_count }}</strong></p>
+        </div>
+        
+        <div class="tag-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tag</th>
+                        <th>Amount</th>
+                        <th>Transactions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tag in tags %}
+                    <tr>
+                        <td>{{ tag.tag }}</td>
+                        <td {% if tag.amount < 0 %}class="negative"{% else %}class="positive"{% endif %}>
+                            ${{ '{:,.2f}'.format(tag.amount|abs) }}
+                        </td>
+                        <td>{{ tag.count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if not tags %}
+        <div style="margin-top: 20px; padding: 15px; background-color: #f9f9f9; border-radius: 5px;">
+            <p>No tag data available. Import your transaction history to see spending patterns by tag.</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
+"""
 
 if __name__ == '__main__':
     # Initialize database tables
