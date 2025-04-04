@@ -48,6 +48,19 @@ def initialize_database():
         )
     """)
     
+    # Create transaction_history table if it doesn't exist
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS transaction_history (
+            id SERIAL PRIMARY KEY,
+            date TEXT,
+            description TEXT,
+            vendor TEXT,
+            amount TEXT,
+            tag TEXT,
+            imported_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     conn.commit()
     cur.close()
     conn.close()
@@ -140,6 +153,19 @@ def auto_apply_tags():
     cur.close()
     conn.close()
     return total_applied
+
+def get_history_count():
+    """Get the count of transactions in the transaction_history table"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT COUNT(*) FROM transaction_history")
+    count = cur.fetchone()[0]
+    
+    cur.close()
+    conn.close()
+    
+    return count
 
 # HTML template 
 HTML_TEMPLATE = """
@@ -255,6 +281,13 @@ HTML_TEMPLATE = """
         </div>
         {% endif %}
         
+        {% if moved_count and moved_count > 0 %}
+        <div class="alert" style="background-color: #ffe8d6; color: #8b4513;">
+            <p>{{ moved_count }} transactions moved to transaction_history table successfully!</p>
+            <p><small>Tagged transactions have been moved to the persistent history table and removed from the current working set.</small></p>
+        </div>
+        {% endif %}
+        
         {% if search %}
         <div class="tag-all-section" style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #b8daff;">
             <form method="POST" action="/tag_all">
@@ -292,6 +325,21 @@ HTML_TEMPLATE = """
                             <td style="text-align: right;">{{ total_untagged_descriptions }}</td>
                         </tr>
                     </table>
+                </div>
+                <div style="margin-left: 20px; text-align: center;">
+                    <div style="margin-bottom: 15px;">
+                        <form action="/push_to_history" method="post" onsubmit="return confirm('Are you sure you want to move all tagged transactions to history? This action cannot be undone.');">
+                            <button type="submit" style="padding: 10px 15px; background-color: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer;">Push to transaction_history</button>
+                        </form>
+                    </div>
+                    <div>
+                        <table style="width: auto; margin: 0 auto;">
+                            <tr>
+                                <td style="text-align: right; padding-right: 15px; font-weight: bold;">Total Transactions in History:</td>
+                                <td style="text-align: right; font-weight: bold;">{{ history_count }}</td>
+                            </tr>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -345,6 +393,7 @@ def index():
     filter_type = request.args.get('filter', 'all')
     auto_tagged = request.args.get('auto_tagged', 0, type=int)
     unique_tags_applied = request.args.get('unique_tags_applied', 0, type=int)
+    moved_count = request.args.get('moved_count', 0, type=int)
     page = request.args.get('page', 1, type=int)
     items_per_page = 100
     
@@ -458,6 +507,9 @@ def index():
         cur.close()
         conn.close()
         
+        # Get count of transactions in history
+        history_count = get_history_count()
+        
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
@@ -465,12 +517,14 @@ def index():
                                     total_pages=total_pages,
                                     search=search,
                                     filter=filter_type,
-                                    auto_tagged=total_tagged_transactions,
+                                    auto_tagged=auto_tagged,
                                     unique_tags_applied=unique_tags_applied,
                                     total_transactions=total_transactions,
                                     tagged_count=tagged_count,
                                     total_tagged_transactions=total_tagged_transactions,
-                                    total_untagged_descriptions=total_untagged_descriptions)
+                                    total_untagged_descriptions=total_untagged_descriptions,
+                                    history_count=history_count,
+                                    moved_count=moved_count)
               
     except Exception as e:
         return f"Error: {str(e)}"
@@ -728,6 +782,7 @@ def most_common():
     """Show the most common transactions sorted by count"""
     filter_type = request.args.get('filter', 'all')
     page = request.args.get('page', 1, type=int)
+    moved_count = request.args.get('moved_count', 0, type=int)
     items_per_page = 100
     
     try:
@@ -816,6 +871,9 @@ def most_common():
         cur.close()
         conn.close()
         
+        # Get count of transactions in history
+        history_count = get_history_count()
+        
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
@@ -828,10 +886,53 @@ def most_common():
                                     total_transactions=total_transactions,
                                     tagged_count=tagged_count,
                                     total_tagged_transactions=total_tagged_transactions,
-                                    total_untagged_descriptions=total_untagged_descriptions)
+                                    total_untagged_descriptions=total_untagged_descriptions,
+                                    history_count=history_count,
+                                    moved_count=moved_count)
               
     except Exception as e:
         return f"Error: {str(e)}"
+
+@app.route('/push_to_history', methods=['POST'])
+def push_to_history():
+    """Move all tagged transactions to the transaction_history table and remove them from transactions"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # First, insert all tagged transactions into transaction_history
+        cur.execute("""
+            INSERT INTO transaction_history (date, description, vendor, amount, tag)
+            SELECT t._date, t.description, t.vendor, t.amount, tt.tag
+            FROM transactions t
+            JOIN transaction_tags tt ON t.description = tt.description
+            WHERE NOT EXISTS (
+                SELECT 1 FROM transaction_history h 
+                WHERE h.date = t._date AND h.description = t.description AND 
+                      h.vendor = t.vendor AND h.amount = t.amount
+            )
+        """)
+        
+        # Get the count of transactions moved
+        moved_count = cur.rowcount
+        
+        # Delete all tagged transactions from the transactions table
+        cur.execute("""
+            DELETE FROM transactions
+            WHERE description IN (SELECT description FROM transaction_tags)
+        """)
+        
+        # Clear the transaction_tags table since those transactions are now in history
+        cur.execute("TRUNCATE transaction_tags")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return redirect(url_for('index', moved_count=moved_count))
+        
+    except Exception as e:
+        return f"Error pushing to history: {str(e)}"
 
 if __name__ == '__main__':
     # Initialize database tables
