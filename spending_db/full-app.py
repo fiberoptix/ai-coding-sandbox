@@ -410,6 +410,25 @@ HTML_TEMPLATE = """
                     <button type="submit" style="padding: 5px 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Import History</button>
                 </form>
             </div>
+            
+            <div style="margin-top: 20px; padding: 15px; background-color: #f8d7da; border-radius: 5px; border: 1px solid #f5c6cb;">
+                <h4>Clear Database Tables</h4>
+                <form action="/clear_database" method="post" onsubmit="return confirm('WARNING: This will permanently delete data from the selected tables. Are you sure you want to continue?');">
+                    <div style="margin-bottom: 10px;">
+                        <input type="checkbox" id="clear_transactions" name="tables" value="transactions">
+                        <label for="clear_transactions">Current Transactions</label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="checkbox" id="clear_tags" name="tables" value="transaction_tags">
+                        <label for="clear_tags">Transaction Tags</label>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <input type="checkbox" id="clear_history" name="tables" value="transaction_history">
+                        <label for="clear_history">Transaction History</label>
+                    </div>
+                    <button type="submit" style="padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Selected Tables</button>
+                </form>
+            </div>
         </div>
     </div>
 </body>
