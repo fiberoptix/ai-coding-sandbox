@@ -1,72 +1,135 @@
-# Spending Database Project
+# Transaction Tagger
 
-A PostgreSQL database in a Docker container for analyzing spending transactions.
+A web application for tagging financial transactions based on their descriptions.
+
+## Project Overview
+
+This application provides a web interface for:
+- Viewing transactions from a PostgreSQL database
+- Tagging transactions by their descriptions
+- Filtering transactions (all, tagged, untagged)
+- Searching for specific transactions
+- Applying tags to multiple transactions at once
+
+## Key Files
+
+- `full-app.py` - The main Flask web application
+- `migrate_tags.py` - Script for migrating the transaction_tags table structure
+- `transactions.csv` - Source data for transactions
+- `init.sql` - SQL initialization script for the database
+- `Dockerfile` - Docker configuration for the application
+- `docker-compose.yml` - Docker Compose configuration
+- `run-docker.sh` - Script for managing Docker container
+
+## Running with Docker
+
+This application is designed to run in a Docker container, which includes both PostgreSQL and the Flask web application.
+
+### Prerequisites
+
+- Docker and docker-compose installed on your system
+
+### Getting Started
+
+1. Build the Docker image:
+   ```
+   ./run-docker.sh build
+   ```
+
+2. Start the Docker container:
+   ```
+   ./run-docker.sh start
+   ```
+
+3. Access the web application at http://localhost:5001
+
+### Docker Commands
+
+- `./run-docker.sh build` - Build the Docker image
+- `./run-docker.sh start` - Start the Docker container
+- `./run-docker.sh stop` - Stop the Docker container
+- `./run-docker.sh restart` - Restart the Docker container
+- `./run-docker.sh logs` - Show logs from the container
+- `./run-docker.sh shell` - Open a shell inside the container
+
+## Usage
+
+- Use the search box to search for specific transaction descriptions
+- Use the filter dropdown to view all, tagged, or untagged transactions
+- Enter a tag for each transaction
+- Use "Tag All" feature to tag multiple matching transactions at once
+
+## Data Persistence
+
+The application uses a Docker volume (`postgres_data`) to ensure your tagged data persists between container restarts.
 
 ## Features
 
-- **Dynamic CSV Import**: Automatically adapts to your CSV structure
-- **Intelligent View Creation**: Creates analysis views based on detected columns
-- **Interactive PostgreSQL CLI**: Run custom queries directly against your data
-- **Containerized**: Everything runs in a Docker container for easy setup and cleanup
+- View all unique transactions grouped by description
+- Add tags to categorize transactions
+- Search functionality to filter transactions
+- Statistics showing progress of tagging
 
-## Setup & Usage
+## Setup Options
 
-1. Make sure Docker is running on your system
-2. Place your `transactions.csv` file in the `spending_db` directory
-3. Run the start script: `./start-db.sh`
-4. The script will:
-   - Build the Docker image
-   - Start the PostgreSQL container
-   - Connect to the database with the PostgreSQL CLI
+### Option 1: Run with Docker Compose (Recommended)
 
-## How It Works
-
-The system:
-1. Reads your CSV file header to determine column structure
-2. Creates a database table that matches your CSV columns
-3. Imports all data from your CSV file
-4. Attempts to create helpful analysis views by intelligently detecting:
-   - Amount/cost/price columns
-   - Category/type columns
-   - Date columns
-
-## Example Queries
-
-```sql
--- View first 10 transactions
-SELECT * FROM transactions LIMIT 10;
-
--- View table structure
-\d transactions
-
--- List all columns
-SELECT column_name FROM information_schema.columns 
-WHERE table_name = 'transactions';
-
--- View category totals (if available)
-SELECT * FROM category_totals;
-
--- View monthly spending (if available)
-SELECT * FROM monthly_spending;
-```
-
-## Updating Your Data
-
-When you need to update your transactions:
-
-1. Replace the `transactions.csv` file with your new data
-2. Rebuild and restart the container:
-   ```bash
-   docker stop spending-postgres
-   docker rm spending-postgres
-   ./start-db.sh
+1. Make sure Docker and Docker Compose are installed
+2. Build the images:
+   ```
+   cd spending_db
+   docker-compose build
+   ```
+3. Start the services:
+   ```
+   docker-compose up -d
+   ```
+4. Navigate to http://localhost:5001 in your browser
+5. To restart just the web service after code changes:
+   ```
+   docker-compose restart webservice
+   ```
+   Or to rebuild and restart:
+   ```
+   docker-compose build webservice
+   docker-compose up -d --no-deps webservice
    ```
 
-## Stopping the Container
+### Option 2: Run with a Python virtual environment
 
-When you're done, you can stop and remove the container:
+1. Make sure you have a running PostgreSQL instance with the database set up
+2. Run the web service using the script:
+   ```
+   cd spending_db
+   chmod +x run-web.sh
+   ./run-web.sh
+   ```
+3. Navigate to http://localhost:5000 in your browser
 
-```bash
-docker stop spending-postgres
-docker rm spending-postgres
-``` 
+## Management Script
+
+For convenience, you can use the management script:
+
+```
+./manage-services.sh start      # Start all services
+./manage-services.sh stop       # Stop all services
+./manage-services.sh restart-web # Restart only the web service
+./manage-services.sh logs       # View logs
+./manage-services.sh status     # Check status
+./manage-services.sh rebuild-web # Rebuild and restart web service
+```
+
+## Database Schema
+
+The main tables are:
+
+- `transactions`: Contains all financial transactions
+- `transaction_tags`: Contains the user-defined tags for transactions
+
+## Web Interface Usage
+
+1. Browse the list of transactions
+2. Use the search box to filter transactions
+3. Enter a tag for each transaction
+4. Click the "Save" button to save the tag
+5. The statistics at the bottom show your progress 

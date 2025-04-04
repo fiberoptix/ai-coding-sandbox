@@ -583,7 +583,7 @@ def index():
         # Remaining to tag
         remaining_to_tag = total_transactions - total_tagged_transactions
         
-        # Base query for unique description:vendor pairs and their counts
+        # Base query for transactions grouped by description
         query = """
             SELECT t.description, t.vendor, COUNT(*) as count, SUM(
                 CASE 
