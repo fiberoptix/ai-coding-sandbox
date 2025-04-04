@@ -7,7 +7,7 @@ CREATE TABLE csv_raw (
 
 -- Import the entire CSV file as raw text
 \echo 'Importing CSV data as raw text...'
-COPY csv_raw FROM '/transactions.csv';
+COPY csv_raw FROM '/app/transactions.csv';
 
 -- Show the raw contents for debugging
 \echo 'First few rows of raw data:'
@@ -63,6 +63,9 @@ DECLARE
     row_record RECORD;
     i INTEGER;
     column_name TEXT;
+    error_count INTEGER := 0;
+    success_count INTEGER := 0;
+    mismatched_count INTEGER := 0;
 BEGIN
     -- Get the header row
     SELECT line INTO header_row FROM csv_raw LIMIT 1;
@@ -84,10 +87,24 @@ BEGIN
         -- Split the row into values
         column_values := string_to_array(row_record.line, ',');
         
-        -- Handle mismatched column counts gracefully
+        -- Handle mismatched column counts by extending the array if needed
         IF array_length(column_values, 1) <> array_length(column_array, 1) THEN
-            RAISE NOTICE 'Skipping row with mismatched column count: %', row_record.line;
-            CONTINUE;
+            RAISE NOTICE 'Row with mismatched column count: %. Attempting to adjust...', row_record.line;
+            mismatched_count := mismatched_count + 1;
+            
+            IF array_length(column_values, 1) < array_length(column_array, 1) THEN
+                -- Extend the array with empty values
+                FOR i IN array_length(column_values, 1)+1..array_length(column_array, 1) LOOP
+                    column_values := array_append(column_values, '');
+                END LOOP;
+            END IF;
+            -- If there are too many columns, we'll just use the ones we need
+        END IF;
+        
+        -- Limit column_values to the expected number of columns
+        IF array_length(column_values, 1) > array_length(column_array, 1) THEN
+            -- Trim the array to match expected columns
+            column_values := column_values[1:array_length(column_array, 1)];
         END IF;
         
         -- Handle empty fields and escape values
@@ -110,13 +127,19 @@ BEGIN
         -- Execute the insert
         BEGIN
             EXECUTE sql_insert;
+            success_count := success_count + 1;
         EXCEPTION WHEN OTHERS THEN
+            error_count := error_count + 1;
             RAISE NOTICE 'Error inserting row: % - %', row_record.line, SQLERRM;
         END;
     END LOOP;
     
-    -- Report completion
-    RAISE NOTICE 'Data import completed';
+    -- Report completion with detailed counts
+    RAISE NOTICE 'Data import completed:';
+    RAISE NOTICE '  Success: % rows', success_count;
+    RAISE NOTICE '  Errors: % rows', error_count;
+    RAISE NOTICE '  Rows with mismatched columns (adjusted): % rows', mismatched_count;
+    RAISE NOTICE '  Total processed: % rows', success_count + error_count;
 END $$;
 
 -- Print out sample data

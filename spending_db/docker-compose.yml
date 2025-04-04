@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  transaction-tagger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"  # Web application
+      - "5433:5432"  # PostgreSQL - use 5433 on host to avoid conflict
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=spending_db
+    restart: unless-stopped
+
+volumes:
+  postgres_data: 
