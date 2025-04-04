@@ -335,7 +335,7 @@ HTML_TEMPLATE = """
                         </tr>
                         <tr>
                             <td style="text-align: right; padding-right: 15px;">Remaining to tag:</td>
-                            <td style="text-align: right;">{{ total_untagged_descriptions }}</td>
+                            <td style="text-align: right;">{{ remaining_to_tag }}</td>
                         </tr>
                     </table>
                 </div>
@@ -539,6 +539,10 @@ def index():
         cur.close()
         conn.close()
         
+        # Set remaining to tag to 0 only if there are no records to tag
+        # otherwise set it to the actual number of untagged descriptions
+        remaining_to_tag = 0 if total_transactions == 0 else total_untagged_descriptions
+        
         # Get count of transactions in history
         history_count = get_history_count()
         
@@ -561,7 +565,8 @@ def index():
                                     history_count=history_count,
                                     tags_count=tags_count,
                                     total_unique_descriptions=total_unique_descriptions,
-                                    moved_count=moved_count)
+                                    moved_count=moved_count,
+                                    remaining_to_tag=remaining_to_tag)
               
     except Exception as e:
         return f"Error: {str(e)}"
@@ -919,6 +924,10 @@ def most_common():
         cur.close()
         conn.close()
         
+        # Set remaining to tag to 0 only if there are no records to tag
+        # otherwise set it to the actual number of untagged descriptions
+        remaining_to_tag = 0 if total_transactions == 0 else total_untagged_descriptions
+        
         # Get count of transactions in history
         history_count = get_history_count()
         
@@ -941,7 +950,8 @@ def most_common():
                                     history_count=history_count,
                                     tags_count=tags_count,
                                     total_unique_descriptions=total_unique_descriptions,
-                                    moved_count=moved_count)
+                                    moved_count=moved_count,
+                                    remaining_to_tag=remaining_to_tag)
               
     except Exception as e:
         return f"Error: {str(e)}"
