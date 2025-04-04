@@ -16,6 +16,17 @@ DB_PARAMS = {
     "port": "5432"
 }
 
+def get_build_number():
+    """Get the current build number from the build_count file"""
+    try:
+        build_file_path = os.path.join(os.path.dirname(__file__), '.build_info', 'build_count.txt')
+        if os.path.exists(build_file_path):
+            with open(build_file_path, 'r') as f:
+                return f.read().strip()
+        return "1"  # Default if file doesn't exist
+    except Exception:
+        return "?"  # Return a placeholder if any error occurs
+
 def get_db_connection():
     """Create a database connection with retry logic"""
     max_retries = 5
@@ -256,6 +267,17 @@ HTML_TEMPLATE = """
             background-color: #f8f9fa;
             border-radius: 4px;
         }
+        .build-info {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            padding: 5px 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #6c757d;
+            border: 1px solid #dee2e6;
+        }
         @media (max-width: 768px) {
             .tag-form {
                 flex-direction: column;
@@ -270,6 +292,7 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
+    <div class="build-info">Build: {{ build_number }}</div>
     <div class="container">
         <h1>Transaction Tagger</h1>
         <p>Tag your transactions to categorize spending patterns.</p>
@@ -448,6 +471,9 @@ def index():
     page = request.args.get('page', 1, type=int)
     items_per_page = 100
     
+    # Get build number
+    build_number = get_build_number()
+    
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -601,7 +627,8 @@ def index():
                                     tags_imported=tags_imported,
                                     history_imported=history_imported,
                                     cleared=cleared,
-                                    remaining_to_tag=remaining_to_tag)
+                                    remaining_to_tag=remaining_to_tag,
+                                    build_number=build_number)
               
     except Exception as e:
         return f"Error: {str(e)}"
@@ -862,6 +889,9 @@ def most_common():
     moved_count = request.args.get('moved_count', 0, type=int)
     items_per_page = 100
     
+    # Get build number
+    build_number = get_build_number()
+    
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -986,7 +1016,8 @@ def most_common():
                                     tags_count=tags_count,
                                     total_unique_descriptions=total_unique_descriptions,
                                     moved_count=moved_count,
-                                    remaining_to_tag=remaining_to_tag)
+                                    remaining_to_tag=remaining_to_tag,
+                                    build_number=build_number)
               
     except Exception as e:
         return f"Error: {str(e)}"

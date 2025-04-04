@@ -2,12 +2,39 @@
 
 # This script manages the Docker container for the Transaction Tagger application
 
+# Function to increment build count
+increment_build_count() {
+    BUILD_INFO_DIR=".build_info"
+    BUILD_COUNT_FILE="${BUILD_INFO_DIR}/build_count.txt"
+    
+    # Create directory if it doesn't exist
+    mkdir -p "${BUILD_INFO_DIR}"
+    
+    # Initialize build count if file doesn't exist
+    if [ ! -f "${BUILD_COUNT_FILE}" ]; then
+        echo "1" > "${BUILD_COUNT_FILE}"
+        echo "Build count initialized to 1"
+        return
+    fi
+    
+    # Read current build count
+    CURRENT_COUNT=$(cat "${BUILD_COUNT_FILE}")
+    
+    # Increment build count
+    NEW_COUNT=$((CURRENT_COUNT + 1))
+    
+    # Save new build count
+    echo "${NEW_COUNT}" > "${BUILD_COUNT_FILE}"
+    echo "Build count incremented to ${NEW_COUNT}"
+}
+
 # Function to display help
 show_help() {
     echo "Usage: ./run-docker.sh [command]"
     echo ""
     echo "Commands:"
     echo "  build       - Build the Docker image"
+    echo "  bb          - Stop, Build, and Start the Docker container"
     echo "  start       - Start the Docker container"
     echo "  stop        - Stop the Docker container"
     echo "  restart     - Restart the Docker container"
@@ -29,7 +56,16 @@ fi
 case "$1" in
     build)
         echo "Building Docker image..."
+        increment_build_count
         docker-compose build
+        ;;
+    bb)
+        echo "Stopping, Building, and Starting Docker image..."
+        docker-compose down
+        increment_build_count
+        docker-compose build
+        docker-compose up -d
+        echo "Application is starting at http://localhost:5001"
         ;;
     start)
         echo "Starting Docker container..."
@@ -62,6 +98,7 @@ case "$1" in
         fi
         
         echo "Starting containers with fresh database..."
+        increment_build_count
         docker-compose up -d
         echo "Application is starting with a fresh database at http://localhost:5001"
         echo "This will import transactions.csv from scratch."

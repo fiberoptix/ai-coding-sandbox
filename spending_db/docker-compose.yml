@@ -8,6 +8,7 @@ services:
       - "5433:5432"  # PostgreSQL - use 5433 on host to avoid conflict
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./.build_info:/app/.build_info
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
