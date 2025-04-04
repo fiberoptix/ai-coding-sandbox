@@ -323,7 +323,7 @@ HTML_TEMPLATE = """
                         </tr>
                         <tr>
                             <td style="text-align: right; padding-right: 15px;">Total unique descriptions:</td>
-                            <td style="text-align: right;">{{ transaction_pairs | length }}</td>
+                            <td style="text-align: right;">{{ total_unique_descriptions }}</td>
                         </tr>
                         <tr>
                             <td style="text-align: right; padding-right: 15px;">Unique descriptions tagged:</td>
@@ -430,6 +430,10 @@ def index():
             JOIN transaction_tags tt ON t.description = tt.description
         """)
         total_tagged_transactions = cur.fetchone()[0]
+        
+        # Get count of unique descriptions
+        cur.execute("SELECT COUNT(DISTINCT description) FROM transactions")
+        total_unique_descriptions = cur.fetchone()[0]
         
         # Base query to get unique descriptions
         query = """
@@ -556,6 +560,7 @@ def index():
                                     total_untagged_descriptions=total_untagged_descriptions,
                                     history_count=history_count,
                                     tags_count=tags_count,
+                                    total_unique_descriptions=total_unique_descriptions,
                                     moved_count=moved_count)
               
     except Exception as e:
@@ -832,8 +837,11 @@ def most_common():
         """)
         total_tagged_transactions = cur.fetchone()[0]
         
+        # Get count of unique descriptions
+        cur.execute("SELECT COUNT(DISTINCT description) FROM transactions")
+        total_unique_descriptions = cur.fetchone()[0]
+        
         # Base query to get unique descriptions ordered by count
-        # Modified to only include descriptions from current transactions table
         query = """
         SELECT 
             t.description, 
@@ -932,6 +940,7 @@ def most_common():
                                     total_untagged_descriptions=total_untagged_descriptions,
                                     history_count=history_count,
                                     tags_count=tags_count,
+                                    total_unique_descriptions=total_unique_descriptions,
                                     moved_count=moved_count)
               
     except Exception as e:
