@@ -167,6 +167,19 @@ def get_history_count():
     
     return count
 
+def get_tags_count():
+    """Get the count of unique tags in the transaction_history table"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT COUNT(DISTINCT tag) FROM transaction_history")
+    count = cur.fetchone()[0]
+    
+    cur.close()
+    conn.close()
+    
+    return count
+
 # HTML template 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -338,6 +351,10 @@ HTML_TEMPLATE = """
                                 <td style="text-align: right; padding-right: 15px; font-weight: bold;">Total Transactions in History:</td>
                                 <td style="text-align: right; font-weight: bold;">{{ history_count }}</td>
                             </tr>
+                            <tr>
+                                <td style="text-align: right; padding-right: 15px; font-weight: bold;">Total Tags in History:</td>
+                                <td style="text-align: right; font-weight: bold;">{{ tags_count }}</td>
+                            </tr>
                         </table>
                     </div>
                 </div>
@@ -381,6 +398,8 @@ HTML_TEMPLATE = """
         
         <div style="margin-top: 20px;">
             <a href="/export_tags" download="transaction_tags.csv">Export Tags as CSV</a>
+            <span style="margin: 0 10px;">|</span>
+            <a href="/export_history" download="transaction_history.csv">Export All Historical Transactions as CSV</a>
         </div>
     </div>
 </body>
@@ -401,11 +420,11 @@ def index():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get total transaction count
+        # Get total transaction count (only from transactions table, not history)
         cur.execute("SELECT COUNT(*) FROM transactions")
         total_transactions = cur.fetchone()[0]
         
-        # Get count of total tagged transactions
+        # Get count of total tagged transactions (only from current transactions)
         cur.execute("""
             SELECT COUNT(*) FROM transactions t
             JOIN transaction_tags tt ON t.description = tt.description
@@ -510,6 +529,9 @@ def index():
         # Get count of transactions in history
         history_count = get_history_count()
         
+        # Get count of unique tags in history
+        tags_count = get_tags_count()
+        
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
@@ -524,6 +546,7 @@ def index():
                                     total_tagged_transactions=total_tagged_transactions,
                                     total_untagged_descriptions=total_untagged_descriptions,
                                     history_count=history_count,
+                                    tags_count=tags_count,
                                     moved_count=moved_count)
               
     except Exception as e:
@@ -789,11 +812,11 @@ def most_common():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get total transaction count
+        # Get total transaction count (only from transactions table, not history)
         cur.execute("SELECT COUNT(*) FROM transactions")
         total_transactions = cur.fetchone()[0]
         
-        # Get count of total tagged transactions
+        # Get count of total tagged transactions (only from current transactions)
         cur.execute("""
             SELECT COUNT(*) FROM transactions t
             JOIN transaction_tags tt ON t.description = tt.description
@@ -874,6 +897,9 @@ def most_common():
         # Get count of transactions in history
         history_count = get_history_count()
         
+        # Get count of unique tags in history
+        tags_count = get_tags_count()
+        
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
                                     existing_tags=existing_tags,
@@ -888,6 +914,7 @@ def most_common():
                                     total_tagged_transactions=total_tagged_transactions,
                                     total_untagged_descriptions=total_untagged_descriptions,
                                     history_count=history_count,
+                                    tags_count=tags_count,
                                     moved_count=moved_count)
               
     except Exception as e:
@@ -922,8 +949,7 @@ def push_to_history():
             WHERE description IN (SELECT description FROM transaction_tags)
         """)
         
-        # Clear the transaction_tags table since those transactions are now in history
-        cur.execute("TRUNCATE transaction_tags")
+        # We no longer clear the transaction_tags table, keeping the tags for future matching
         
         conn.commit()
         cur.close()
@@ -933,6 +959,57 @@ def push_to_history():
         
     except Exception as e:
         return f"Error pushing to history: {str(e)}"
+
+@app.route('/export_history')
+def export_history():
+    """Export all transactions from transaction_history as CSV file"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get all transactions from history
+        cur.execute("""
+            SELECT date, description, vendor, amount, tag, imported_date
+            FROM transaction_history 
+            ORDER BY date, description
+        """)
+        
+        transactions = cur.fetchall()
+        
+        # Create CSV content
+        csv_content = "date,description,vendor,amount,tag,imported_date\n"
+        for transaction in transactions:
+            # Properly escape fields that might contain commas or quotes
+            date = transaction[0].replace('"', '""') if transaction[0] else ""
+            description = transaction[1].replace('"', '""') if transaction[1] else ""
+            vendor = transaction[2].replace('"', '""') if transaction[2] else ""
+            amount = transaction[3].replace('"', '""') if transaction[3] else ""
+            tag = transaction[4].replace('"', '""') if transaction[4] else ""
+            imported_date = transaction[5].strftime("%Y-%m-%d %H:%M:%S") if transaction[5] else ""
+            
+            # Always quote fields for consistent formatting
+            date = f'"{date}"'
+            description = f'"{description}"'
+            vendor = f'"{vendor}"'
+            amount = f'"{amount}"'
+            tag = f'"{tag}"'
+            imported_date = f'"{imported_date}"'
+            
+            csv_content += f"{date},{description},{vendor},{amount},{tag},{imported_date}\n"
+        
+        cur.close()
+        conn.close()
+        
+        # Create response with CSV file
+        from flask import Response
+        return Response(
+            csv_content,
+            mimetype="text/csv",
+            headers={"Content-disposition": "attachment; filename=transaction_history.csv"}
+        )
+        
+    except Exception as e:
+        return f"Error exporting history: {str(e)}"
 
 if __name__ == '__main__':
     # Initialize database tables
