@@ -342,10 +342,10 @@ HTML_TEMPLATE = """
         
         <div class="btn-group">
             <a href="/"><button>Home</button></a>
+            <button class="btn-import" onclick="showImportForm()">Import New Records</button>
             <a href="/most_common"><button>Most Common</button></a>
             <a href="/monthly_summary"><button>Monthly Summary</button></a>
             <a href="/tag_summary"><button>Tag Summary</button></a>
-            <button class="btn-import" onclick="showImportForm()">Import New Records</button>
         </div>
         
         <div id="importRecordsForm" class="file-import-form">
@@ -372,7 +372,6 @@ HTML_TEMPLATE = """
                     <option value="tagged" {% if filter == 'tagged' %}selected{% endif %}>Tagged Only</option>
                 </select>
                 <button type="submit">Search</button>
-                <a href="/most_common" class="button" style="background-color: #4CAF50; color: white; text-decoration: none; padding: 8px; border-radius: 3px; margin-left: 10px;">Most Common</a>
             </form>
         </div>
 
