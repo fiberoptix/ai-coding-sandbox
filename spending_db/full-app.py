@@ -17,13 +17,9 @@ DB_PARAMS = {
 }
 
 def get_build_number():
-    """Get the current build number from the build_count file"""
+    """Get the current build number from environment variable"""
     try:
-        build_file_path = os.path.join(os.path.dirname(__file__), '.build_info', 'build_count.txt')
-        if os.path.exists(build_file_path):
-            with open(build_file_path, 'r') as f:
-                return f.read().strip()
-        return "1"  # Default if file doesn't exist
+        return os.environ.get('BUILD_NUMBER', '1')
     except Exception:
         return "?"  # Return a placeholder if any error occurs
 

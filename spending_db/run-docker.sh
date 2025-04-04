@@ -13,6 +13,7 @@ increment_build_count() {
     # Initialize build count if file doesn't exist
     if [ ! -f "${BUILD_COUNT_FILE}" ]; then
         echo "1" > "${BUILD_COUNT_FILE}"
+        export BUILD_NUMBER=1
         echo "Build count initialized to 1"
         return
     fi
@@ -25,6 +26,7 @@ increment_build_count() {
     
     # Save new build count
     echo "${NEW_COUNT}" > "${BUILD_COUNT_FILE}"
+    export BUILD_NUMBER=$NEW_COUNT
     echo "Build count incremented to ${NEW_COUNT}"
 }
 
@@ -57,19 +59,25 @@ case "$1" in
     build)
         echo "Building Docker image..."
         increment_build_count
-        docker-compose build
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose build
         ;;
     bb)
         echo "Stopping, Building, and Starting Docker image..."
         docker-compose down
         increment_build_count
-        docker-compose build
-        docker-compose up -d
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose build
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is starting at http://localhost:5001"
         ;;
     start)
         echo "Starting Docker container..."
-        docker-compose up -d
+        # Get current build number if exists
+        if [ -f ".build_info/build_count.txt" ]; then
+            export BUILD_NUMBER=$(cat ".build_info/build_count.txt")
+        else
+            export BUILD_NUMBER=1
+        fi
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is starting at http://localhost:5001"
         ;;
     stop)
@@ -79,7 +87,13 @@ case "$1" in
     restart)
         echo "Restarting Docker container..."
         docker-compose down
-        docker-compose up -d
+        # Get current build number if exists
+        if [ -f ".build_info/build_count.txt" ]; then
+            export BUILD_NUMBER=$(cat ".build_info/build_count.txt")
+        else
+            export BUILD_NUMBER=1
+        fi
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is restarting at http://localhost:5001"
         ;;
     flush)
@@ -99,7 +113,7 @@ case "$1" in
         
         echo "Starting containers with fresh database..."
         increment_build_count
-        docker-compose up -d
+        BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is starting with a fresh database at http://localhost:5001"
         echo "This will import transactions.csv from scratch."
         ;;
