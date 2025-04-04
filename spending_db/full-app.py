@@ -551,7 +551,11 @@ def index():
         # Count of tagged descriptions
         cur.execute("""
             SELECT COUNT(*) 
-            FROM tags
+            FROM tags t
+            WHERE EXISTS (
+                SELECT 1 FROM records_imported ri
+                WHERE ri.description = t.description
+            )
         """)
         tagged_count = cur.fetchone()[0]
         
@@ -902,7 +906,14 @@ def most_common():
         total_unique_descriptions = cur.fetchone()[0]
         
         # Count tagged descriptions
-        cur.execute("SELECT COUNT(*) FROM tags")
+        cur.execute("""
+            SELECT COUNT(*) 
+            FROM tags t
+            WHERE EXISTS (
+                SELECT 1 FROM records_imported ri
+                WHERE ri.description = t.description
+            )
+        """)
         tagged_count = cur.fetchone()[0]
         
         # Count total transactions
