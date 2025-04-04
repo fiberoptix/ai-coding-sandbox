@@ -46,18 +46,18 @@ def initialize_database():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Create transaction_tags table if it doesn't exist
+    # Create tags table if it doesn't exist
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS transaction_tags (
+        CREATE TABLE IF NOT EXISTS tags (
             id SERIAL PRIMARY KEY,
             description TEXT UNIQUE,
             tag TEXT
         )
     """)
     
-    # Create transaction_history table if it doesn't exist
+    # Create records_history table if it doesn't exist
     cur.execute("""
-        CREATE TABLE IF NOT EXISTS transaction_history (
+        CREATE TABLE IF NOT EXISTS records_history (
             id SERIAL PRIMARY KEY,
             date TEXT,
             description TEXT,
@@ -67,6 +67,45 @@ def initialize_database():
             imported_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Create records_imported table if it doesn't exist
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS records_imported (
+            id SERIAL PRIMARY KEY,
+            date TEXT,
+            description TEXT,
+            vendor TEXT,
+            amount TEXT
+        )
+    """)
+    
+    # Handle migration from old table names if they exist
+    cur.execute("SELECT to_regclass('public.transaction_tags')")
+    if cur.fetchone()[0] is not None:
+        print("Migrating transaction_tags to tags...")
+        cur.execute("""
+            INSERT INTO tags (description, tag)
+            SELECT description, tag FROM transaction_tags
+            ON CONFLICT (description) DO NOTHING
+        """)
+    
+    cur.execute("SELECT to_regclass('public.transaction_history')")
+    if cur.fetchone()[0] is not None:
+        print("Migrating transaction_history to records_history...")
+        cur.execute("""
+            INSERT INTO records_history (date, description, vendor, amount, tag, imported_date)
+            SELECT date, description, vendor, amount, tag, imported_date FROM transaction_history
+            ON CONFLICT DO NOTHING
+        """)
+    
+    cur.execute("SELECT to_regclass('public.transactions')")
+    if cur.fetchone()[0] is not None:
+        print("Migrating transactions to records_imported...")
+        cur.execute("""
+            INSERT INTO records_imported (date, description, vendor, amount)
+            SELECT date, description, vendor, amount FROM transactions
+            ON CONFLICT DO NOTHING
+        """)
     
     conn.commit()
     cur.close()
@@ -81,7 +120,7 @@ def auto_apply_tags():
     print("Auto-applying tags to transactions...")
     
     # Get all existing tags
-    cur.execute("SELECT description, tag FROM transaction_tags")
+    cur.execute("SELECT description, tag FROM tags")
     existing_tags = cur.fetchall()
     
     tags_applied = 0
@@ -89,8 +128,8 @@ def auto_apply_tags():
     # Get all unique descriptions that don't have tags yet
     cur.execute("""
         SELECT DISTINCT t.description
-        FROM transactions t
-        LEFT JOIN transaction_tags tt ON t.description = tt.description
+        FROM records_imported t
+        LEFT JOIN tags tt ON t.description = tt.description
         WHERE tt.id IS NULL
     """)
     
@@ -106,7 +145,7 @@ def auto_apply_tags():
             if description == existing[0]:
                 # Apply tag
                 cur.execute("""
-                    INSERT INTO transaction_tags (description, tag)
+                    INSERT INTO tags (description, tag)
                     VALUES (%s, %s)
                     ON CONFLICT (description) DO NOTHING
                 """, (description, existing[1]))
@@ -120,8 +159,8 @@ def auto_apply_tags():
     # For remaining untagged descriptions, try partial matching
     cur.execute("""
         SELECT DISTINCT t.description
-        FROM transactions t
-        LEFT JOIN transaction_tags tt ON t.description = tt.description
+        FROM records_imported t
+        LEFT JOIN tags tt ON t.description = tt.description
         WHERE tt.id IS NULL
     """)
     
@@ -134,7 +173,7 @@ def auto_apply_tags():
         # Find most commonly used tag for similar descriptions
         cur.execute("""
             SELECT tag, COUNT(*) AS count
-            FROM transaction_tags
+            FROM tags
             WHERE %s ILIKE '%' || description || '%' OR description ILIKE '%' || %s || '%'
             GROUP BY tag
             ORDER BY count DESC
@@ -145,7 +184,7 @@ def auto_apply_tags():
         if matches:
             # Apply the most common tag
             cur.execute("""
-                INSERT INTO transaction_tags (description, tag)
+                INSERT INTO tags (description, tag)
                 VALUES (%s, %s)
                 ON CONFLICT (description) DO NOTHING
             """, (description, matches[0]))
@@ -162,11 +201,11 @@ def auto_apply_tags():
     return total_applied
 
 def get_history_count():
-    """Get the count of transactions in the transaction_history table"""
+    """Get the count of transactions in the records_history table"""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT COUNT(*) FROM transaction_history")
+    cur.execute("SELECT COUNT(*) FROM records_history")
     count = cur.fetchone()[0]
     
     cur.close()
@@ -175,11 +214,11 @@ def get_history_count():
     return count
 
 def get_tags_count():
-    """Get the count of unique tags in the transaction_history table"""
+    """Get the count of unique tags in the records_history table"""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    cur.execute("SELECT COUNT(DISTINCT tag) FROM transaction_history")
+    cur.execute("SELECT COUNT(DISTINCT tag) FROM records_history")
     count = cur.fetchone()[0]
     
     cur.close()
@@ -274,6 +313,29 @@ HTML_TEMPLATE = """
             color: #6c757d;
             border: 1px solid #dee2e6;
         }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .btn-import {
+            padding: 8px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .file-import-form {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+        }
+        .file-import-form.active {
+            display: block;
+        }
         @media (max-width: 768px) {
             .tag-form {
                 flex-direction: column;
@@ -286,12 +348,46 @@ HTML_TEMPLATE = """
             }
         }
     </style>
+    <script>
+        function showImportForm() {
+            document.getElementById('importRecordsForm').classList.toggle('active');
+        }
+        
+        function confirmClear() {
+            return confirm('Are you sure you want to clear the selected tables? This cannot be undone.');
+        }
+        
+        function confirmPush() {
+            return confirm('Are you sure you want to push all tagged transactions to history? This will remove them from the current working set.');
+        }
+    </script>
 </head>
 <body>
     <div class="build-info">Build: {{ build_number }}</div>
     <div class="container">
         <h1>Transaction Tagger</h1>
         <p>Tag your transactions to categorize spending patterns.</p>
+        
+        <div class="btn-group">
+            <a href="/"><button>Home</button></a>
+            <a href="/most_common"><button>Most Common</button></a>
+            <button class="btn-import" onclick="showImportForm()">Import New Records</button>
+        </div>
+        
+        <div id="importRecordsForm" class="file-import-form">
+            <h3>Import Transactions CSV</h3>
+            <form action="/import_records" method="post" enctype="multipart/form-data">
+                <p>Select a CSV file with transactions to import. The file should have headers for date, description, vendor, and amount.</p>
+                <input type="file" name="records_file" required>
+                <div style="margin-top: 10px;">
+                    <label>
+                        <input type="checkbox" name="clear_existing" value="yes">
+                        Clear existing imported records before importing
+                    </label>
+                </div>
+                <button type="submit" style="margin-top: 10px;">Import Records</button>
+            </form>
+        </div>
         
         <div class="search-section">
             <form method="GET" action="/">
@@ -463,6 +559,7 @@ def index():
     moved_count = request.args.get('moved_count', 0, type=int)
     tags_imported = request.args.get('tags_imported', 0, type=int)
     history_imported = request.args.get('history_imported', 0, type=int)
+    records_imported = request.args.get('records_imported', 0, type=int)
     cleared = request.args.get('cleared', '')
     page = request.args.get('page', 1, type=int)
     items_per_page = 100
@@ -472,136 +569,107 @@ def index():
     
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur = conn.cursor()
         
-        # Get total transaction count (only from transactions table, not history)
-        cur.execute("SELECT COUNT(*) FROM transactions")
-        total_transactions = cur.fetchone()[0]
-        
-        # Get count of total tagged transactions (only from current transactions)
-        cur.execute("""
-            SELECT COUNT(*) FROM transactions t
-            JOIN transaction_tags tt ON t.description = tt.description
-        """)
-        total_tagged_transactions = cur.fetchone()[0]
-        
-        # Get count of unique descriptions
-        cur.execute("SELECT COUNT(DISTINCT description) FROM transactions")
+        # Count total unique descriptions
+        cur.execute("SELECT COUNT(DISTINCT description) FROM records_imported")
         total_unique_descriptions = cur.fetchone()[0]
         
-        # Base query to get unique descriptions
-        query = """
-        SELECT 
-            t.description, 
-            COUNT(*)::INTEGER as count, 
-            SUM(CASE WHEN t.amount ~ '^-?[0-9.,]+$' THEN CAST(REPLACE(REPLACE(t.amount, ',', ''), '$', '') AS NUMERIC) ELSE 0 END) as total_amount
-        FROM transactions t
-        """
-        
-        # Add join for filtering by tag status
-        if filter_type in ['tagged', 'untagged']:
-            query += """
-            LEFT JOIN transaction_tags tt ON t.description = tt.description
-            """
-            
-            if filter_type == 'tagged':
-                query += "WHERE tt.id IS NOT NULL "
-            else:  # untagged
-                query += "WHERE tt.id IS NULL "
-            
-            # Add search filter if provided
-            if search:
-                query += "AND t.description ILIKE %s "
-                params = [f"%{search}%"]
-        else:
-            # Just filter by search if provided
-            if search:
-                query += "WHERE t.description ILIKE %s "
-                params = [f"%{search}%"]
-            else:
-                params = []
-                
-        query += """
-        GROUP BY t.description
-        ORDER BY t.description ASC
-        """
-        
-        # Count total rows for pagination
-        count_query = """
-        SELECT COUNT(*) FROM (
-        """ + query + """) AS subquery
-        """
-        
-        # Execute count query with search parameters
-        if 'params' in locals():
-            cur.execute(count_query, params)
-        else:
-            cur.execute(count_query)
-            
-        total_count = cur.fetchone()[0]
-        total_pages = (total_count + items_per_page - 1) // items_per_page
-        
-        # Add pagination
-        query += """
-        LIMIT %s OFFSET %s
-        """
-        
-        # Add pagination parameters
-        if 'params' in locals():
-            params.extend([items_per_page, (page - 1) * items_per_page])
-        else:
-            params = [items_per_page, (page - 1) * items_per_page]
-        
-        # Execute the main query with all parameters
-        cur.execute(query, params)
-        transaction_pairs = cur.fetchall()
-        
-        # Debug and format the results
-        formatted_pairs = []
-        for pair in transaction_pairs:
-            formatted_pair = {
-                'description': pair['description'],
-                'count': int(pair['count']),
-                'total_amount': float(pair['total_amount'] or 0)
-            }
-            formatted_pairs.append(formatted_pair)
-        
-        # Get existing tags for current transactions only
+        # Count of tagged descriptions
         cur.execute("""
-            SELECT tt.description, tt.tag 
-            FROM transaction_tags tt
-            JOIN transactions t ON tt.description = t.description
-        """)
-        existing_tags = {row['description']: row['tag'] for row in cur.fetchall()}
-        
-        # Get count of tagged descriptions in current transactions
-        cur.execute("""
-            SELECT COUNT(DISTINCT tt.description) 
-            FROM transaction_tags tt
-            JOIN transactions t ON tt.description = t.description
+            SELECT COUNT(*) 
+            FROM tags
         """)
         tagged_count = cur.fetchone()[0]
         
-        # Get count of untagged descriptions in current transactions
+        # Count of total transactions
+        cur.execute("SELECT COUNT(*) FROM records_imported")
+        total_transactions = cur.fetchone()[0]
+        
+        # Count of total tagged transactions
         cur.execute("""
-            SELECT COUNT(DISTINCT description) 
-            FROM transactions 
-            WHERE description NOT IN (SELECT description FROM transaction_tags)
+            SELECT COUNT(*) 
+            FROM records_imported t
+            JOIN tags tt ON t.description = tt.description
         """)
-        total_untagged_descriptions = cur.fetchone()[0]
+        total_tagged_transactions = cur.fetchone()[0]
+        
+        # Count of untagged descriptions
+        total_untagged_descriptions = total_unique_descriptions - tagged_count if total_unique_descriptions else 0
+        
+        # Get count of transaction history
+        history_count = get_history_count()
+        
+        # Get count of unique tags
+        tags_count = get_tags_count()
+        
+        # Remaining to tag
+        remaining_to_tag = total_transactions - total_tagged_transactions
+        
+        # Base query for unique description:vendor pairs and their counts
+        query = """
+            SELECT t.description, t.vendor, COUNT(*) as count, SUM(t.amount::numeric) as total, tt.tag
+            FROM records_imported t
+            LEFT JOIN tags tt ON t.description = tt.description
+        """
+        
+        # Add filter conditions
+        where_clause = []
+        params = []
+        
+        # Apply search filter if provided
+        if search:
+            where_clause.append("(t.description ILIKE %s OR t.vendor ILIKE %s)")
+            params.extend(['%' + search + '%', '%' + search + '%'])
+        
+        # Apply tag filter
+        if filter_type == 'tagged':
+            where_clause.append("tt.id IS NOT NULL")
+        elif filter_type == 'untagged':
+            where_clause.append("tt.id IS NULL")
+        
+        if where_clause:
+            query += " WHERE " + " AND ".join(where_clause)
+        
+        # Group by and order
+        query += """
+            GROUP BY t.description, t.vendor, tt.tag
+            ORDER BY COUNT(*) DESC
+        """
+        
+        # Execute count query for pagination
+        count_query = "SELECT COUNT(*) FROM (" + query + ") as subquery"
+        cur.execute(count_query, params)
+        total_pairs = cur.fetchone()[0]
+        total_pages = (total_pairs + items_per_page - 1) // items_per_page
+        
+        # Add pagination
+        query += " LIMIT %s OFFSET %s"
+        offset = (page - 1) * items_per_page
+        params.extend([items_per_page, offset])
+        
+        # Execute final query
+        cur.execute(query, params)
+        transaction_pairs = cur.fetchall()
+        
+        # Format the results for display
+        formatted_pairs = []
+        for pair in transaction_pairs:
+            description, vendor, count, total, tag = pair
+            formatted_pairs.append({
+                'description': description,
+                'vendor': vendor,
+                'count': count,
+                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
+                'tag': tag or ''
+            })
+        
+        # Get existing tags for autocomplete
+        cur.execute("SELECT DISTINCT tag FROM tags WHERE tag IS NOT NULL AND tag != '' ORDER BY tag")
+        existing_tags = [row[0] for row in cur.fetchall()]
         
         cur.close()
         conn.close()
-        
-        # Set remaining to tag to 0 only if there are no records to tag
-        # otherwise set it to the actual number of untagged descriptions
-        remaining_to_tag = 0 if total_transactions == 0 else total_untagged_descriptions
-        
-        # Get count of transactions in history
-        history_count = get_history_count()
-        
-        # Get count of unique tags in history
-        tags_count = get_tags_count()
         
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
@@ -622,10 +690,11 @@ def index():
                                     moved_count=moved_count,
                                     tags_imported=tags_imported,
                                     history_imported=history_imported,
+                                    records_imported=records_imported,
                                     cleared=cleared,
                                     remaining_to_tag=remaining_to_tag,
                                     build_number=build_number)
-              
+                
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -645,7 +714,7 @@ def update_tag():
         
         # Upsert tag - insert if not exists, update if exists
         cur.execute("""
-            INSERT INTO transaction_tags (description, tag)
+            INSERT INTO tags (description, tag)
             VALUES (%s, %s)
             ON CONFLICT (description) 
             DO UPDATE SET tag = EXCLUDED.tag
@@ -687,7 +756,7 @@ def export_tags():
         # Get all tags
         cur.execute("""
             SELECT description, tag 
-            FROM transaction_tags 
+            FROM tags 
             ORDER BY tag, description
         """)
         
@@ -722,22 +791,9 @@ def export_tags():
 
 @app.route('/tag_all', methods=['POST'])
 def tag_all():
-    """Tag all matching transactions with the same tag"""
-    search = request.form.get('search', '')
-    filter_type = request.form.get('filter', 'all')
-    tag = request.form.get('tag', '')
-    
-    # Debug logging
-    print(f"Tag All received - search: '{search}', filter: '{filter_type}', tag: '{tag}'")
-    
-    # If no search term is provided but there's a searchbox value in the form or referrer
-    if not search and request.referrer and 'search=' in request.referrer:
-        # Extract search from referrer URL
-        parsed_url = urlparse(request.referrer)
-        params = parse_qs(parsed_url.query)
-        if 'search' in params:
-            search = params['search'][0]
-            print(f"Extracted search from referrer: '{search}'")
+    """Tag all matching descriptions"""
+    search_term = request.form.get('search_term', '')
+    tag = request.form.get('tag', '').strip()
     
     if not tag:
         return redirect(url_for('index'))
@@ -746,73 +802,33 @@ def tag_all():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Build query to find ALL matching transactions (without DISTINCT)
+        # Find all descriptions that match the search term
         query = """
-        SELECT description
-        FROM transactions
+            SELECT DISTINCT description 
+            FROM records_imported 
+            WHERE description ILIKE %s
         """
+        cur.execute(query, ['%' + search_term + '%'])
+        matching_descriptions = cur.fetchall()
         
-        params = []
-        
-        # Add search condition
-        if search:
-            query += "WHERE description ILIKE %s "
-            params = [f"%{search}%"]
-        
-        # Add filter condition if needed
-        if filter_type in ['tagged', 'untagged']:
-            # Check if we already have WHERE clause
-            if search:
-                query += "AND "
-            else:
-                query += "WHERE "
-                
-            if filter_type == 'tagged':
-                query += "description IN (SELECT description FROM transaction_tags) "
-            else:  # untagged
-                query += "description NOT IN (SELECT description FROM transaction_tags) "
-        
-        # Execute query to get ALL matching transactions
-        print(f"Executing query: {query} with params: {params}")
-        cur.execute(query, params)
-        matching_transactions = cur.fetchall()
-        
-        # Count total transactions (doesn't need to be distinct)
-        total_affected = len(matching_transactions)
-        print(f"Total transactions found: {total_affected}")
-        
-        # Get unique descriptions to tag (we still need to do this for the tagging part)
-        unique_descriptions = set()
-        for trans in matching_transactions:
-            unique_descriptions.add(trans[0])
-        
-        unique_tags_applied = len(unique_descriptions)
-        print(f"Unique descriptions to tag: {unique_tags_applied}")
-        
-        # Apply tag to each unique description
-        for desc in unique_descriptions:
+        # Insert or update tags for all matching descriptions
+        for desc in matching_descriptions:
             cur.execute("""
-                INSERT INTO transaction_tags (description, tag)
+                INSERT INTO tags (description, tag)
                 VALUES (%s, %s)
                 ON CONFLICT (description) 
                 DO UPDATE SET tag = EXCLUDED.tag
-            """, (desc, tag))
+            """, (desc[0], tag))
         
         conn.commit()
         cur.close()
         conn.close()
         
-        # Redirect back with appropriate parameters
-        redirect_url = url_for('index', search=search, 
-                             filter=filter_type, 
-                             auto_tagged=total_affected,
-                             unique_tags_applied=unique_tags_applied)
-        print(f"Redirecting to: {redirect_url}")
-        return redirect(redirect_url)
+        unique_tags_applied = len(matching_descriptions)
+        return redirect(url_for('index', unique_tags_applied=unique_tags_applied))
         
     except Exception as e:
-        print(f"Error in tag_all: {str(e)}")
-        return f"Error tagging transactions: {str(e)}"
+        return f"Error tagging all: {str(e)}"
 
 @app.route('/row_count')
 def row_count():
@@ -883,6 +899,7 @@ def most_common():
     filter_type = request.args.get('filter', 'all')
     page = request.args.get('page', 1, type=int)
     moved_count = request.args.get('moved_count', 0, type=int)
+    records_imported = request.args.get('records_imported', 0, type=int)
     items_per_page = 100
     
     # Get build number
@@ -890,110 +907,98 @@ def most_common():
     
     try:
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur = conn.cursor()
         
-        # Get total transaction count (only from transactions table, not history)
-        cur.execute("SELECT COUNT(*) FROM transactions")
+        # Count all descriptions that aren't tagged yet
+        cur.execute("""
+            SELECT COUNT(DISTINCT t.description)
+            FROM records_imported t
+            LEFT JOIN tags tt ON t.description = tt.description
+            WHERE tt.id IS NULL
+        """)
+        untagged_descriptions_count = cur.fetchone()[0]
+        
+        # Count all unique descriptions
+        cur.execute("SELECT COUNT(DISTINCT description) FROM records_imported")
+        total_unique_descriptions = cur.fetchone()[0]
+        
+        # Count tagged descriptions
+        cur.execute("SELECT COUNT(*) FROM tags")
+        tagged_count = cur.fetchone()[0]
+        
+        # Count total transactions
+        cur.execute("SELECT COUNT(*) FROM records_imported")
         total_transactions = cur.fetchone()[0]
         
-        # Get count of total tagged transactions (only from current transactions)
+        # Count tagged transactions
         cur.execute("""
-            SELECT COUNT(*) FROM transactions t
-            JOIN transaction_tags tt ON t.description = tt.description
+            SELECT COUNT(*) 
+            FROM records_imported t
+            JOIN tags tt ON t.description = tt.description
         """)
         total_tagged_transactions = cur.fetchone()[0]
         
-        # Get count of unique descriptions
-        cur.execute("SELECT COUNT(DISTINCT description) FROM transactions")
-        total_unique_descriptions = cur.fetchone()[0]
+        # Get count of transaction history
+        history_count = get_history_count()
         
-        # Base query to get unique descriptions ordered by count
+        # Get count of unique tags
+        tags_count = get_tags_count()
+        
+        # Calculate remaining to tag
+        remaining_to_tag = total_transactions - total_tagged_transactions
+        
+        # Build the query for most common descriptions
         query = """
-        SELECT 
-            t.description, 
-            COUNT(*)::INTEGER as count, 
-            SUM(CASE WHEN t.amount ~ '^-?[0-9.,]+$' THEN CAST(REPLACE(REPLACE(t.amount, ',', ''), '$', '') AS NUMERIC) ELSE 0 END) as total_amount
-        FROM transactions t
-        LEFT JOIN transaction_tags tt ON t.description = tt.description
-        WHERE tt.id IS NULL
+            SELECT t.description, t.vendor, COUNT(*) as count, 
+                   SUM(t.amount::numeric) as total_amount, 
+                   tt.tag
+            FROM records_imported t
+            LEFT JOIN tags tt ON t.description = tt.description
         """
         
+        # Apply filters
         params = []
-                
-        query += """
-        GROUP BY t.description
-        ORDER BY count DESC
-        """
+        if filter_type == 'tagged':
+            query += " WHERE tt.id IS NOT NULL"
+        elif filter_type == 'untagged':
+            query += " WHERE tt.id IS NULL"
         
-        # Count total rows for pagination
-        count_query = """
-        SELECT COUNT(*) FROM (
-        """ + query + """) AS subquery
-        """
+        # Group and order by count
+        query += " GROUP BY t.description, t.vendor, tt.tag ORDER BY count DESC"
         
-        # Execute count query
+        # Count total results for pagination
+        count_query = "SELECT COUNT(*) FROM (" + query + ") as subquery"
         cur.execute(count_query, params)
-        total_count = cur.fetchone()[0]
-        total_pages = (total_count + items_per_page - 1) // items_per_page
+        total_pairs = cur.fetchone()[0]
+        total_pages = (total_pairs + items_per_page - 1) // items_per_page
         
         # Add pagination
-        query += """
-        LIMIT %s OFFSET %s
-        """
+        query += " LIMIT %s OFFSET %s"
+        offset = (page - 1) * items_per_page
+        params.extend([items_per_page, offset])
         
-        # Add pagination parameters
-        params.extend([items_per_page, (page - 1) * items_per_page])
-        
-        # Execute the main query with all parameters
+        # Execute query
         cur.execute(query, params)
         transaction_pairs = cur.fetchall()
         
-        # Format the results
+        # Format for display
         formatted_pairs = []
         for pair in transaction_pairs:
-            formatted_pair = {
-                'description': pair['description'],
-                'count': int(pair['count']),
-                'total_amount': float(pair['total_amount'] or 0)
-            }
-            formatted_pairs.append(formatted_pair)
+            description, vendor, count, total, tag = pair
+            formatted_pairs.append({
+                'description': description,
+                'vendor': vendor,
+                'count': count,
+                'total': "${:,.2f}".format(float(total)) if total is not None else "$0.00",
+                'tag': tag or ''
+            })
         
-        # Get existing tags for current transactions only
-        cur.execute("""
-            SELECT tt.description, tt.tag 
-            FROM transaction_tags tt
-            JOIN transactions t ON tt.description = t.description
-        """)
-        existing_tags = {row['description']: row['tag'] for row in cur.fetchall()}
-        
-        # Get count of tagged descriptions in current transactions
-        cur.execute("""
-            SELECT COUNT(DISTINCT tt.description) 
-            FROM transaction_tags tt
-            JOIN transactions t ON tt.description = t.description
-        """)
-        tagged_count = cur.fetchone()[0]
-        
-        # Get count of untagged descriptions in current transactions
-        cur.execute("""
-            SELECT COUNT(DISTINCT description) 
-            FROM transactions 
-            WHERE description NOT IN (SELECT description FROM transaction_tags)
-        """)
-        total_untagged_descriptions = cur.fetchone()[0]
+        # Get existing tags for autocomplete
+        cur.execute("SELECT DISTINCT tag FROM tags WHERE tag IS NOT NULL AND tag != '' ORDER BY tag")
+        existing_tags = [row[0] for row in cur.fetchall()]
         
         cur.close()
         conn.close()
-        
-        # Set remaining to tag to 0 only if there are no records to tag
-        # otherwise set it to the actual number of untagged descriptions
-        remaining_to_tag = 0 if total_transactions == 0 else total_untagged_descriptions
-        
-        # Get count of transactions in history
-        history_count = get_history_count()
-        
-        # Get count of unique tags in history
-        tags_count = get_tags_count()
         
         return render_template_string(HTML_TEMPLATE, 
                                     transaction_pairs=formatted_pairs,
@@ -1007,47 +1012,47 @@ def most_common():
                                     total_transactions=total_transactions,
                                     tagged_count=tagged_count,
                                     total_tagged_transactions=total_tagged_transactions,
-                                    total_untagged_descriptions=total_untagged_descriptions,
+                                    total_untagged_descriptions=untagged_descriptions_count,
                                     history_count=history_count,
                                     tags_count=tags_count,
                                     total_unique_descriptions=total_unique_descriptions,
                                     moved_count=moved_count,
+                                    records_imported=records_imported,
                                     remaining_to_tag=remaining_to_tag,
                                     build_number=build_number)
-              
+                
     except Exception as e:
         return f"Error: {str(e)}"
 
 @app.route('/push_to_history', methods=['POST'])
 def push_to_history():
-    """Move all tagged transactions to the transaction_history table and remove them from transactions"""
+    """Push all tagged transactions to history"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # First, insert all tagged transactions into transaction_history
+        # Insert tagged transactions into history
         cur.execute("""
-            INSERT INTO transaction_history (date, description, vendor, amount, tag)
-            SELECT t._date, t.description, t.vendor, t.amount, tt.tag
-            FROM transactions t
-            JOIN transaction_tags tt ON t.description = tt.description
+            INSERT INTO records_history (date, description, vendor, amount, tag)
+            SELECT t.date, t.description, t.vendor, t.amount, tt.tag
+            FROM records_imported t
+            JOIN tags tt ON t.description = tt.description
             WHERE NOT EXISTS (
-                SELECT 1 FROM transaction_history h 
-                WHERE h.date = t._date AND h.description = t.description AND 
-                      h.vendor = t.vendor AND h.amount = t.amount
+                SELECT 1 FROM records_history h
+                WHERE h.date = t.date AND h.description = t.description AND h.vendor = t.vendor AND h.amount = t.amount
             )
         """)
         
-        # Get the count of transactions moved
+        # Count how many were moved
         moved_count = cur.rowcount
         
-        # Delete all tagged transactions from the transactions table
+        # Delete tagged transactions from import table
         cur.execute("""
-            DELETE FROM transactions
-            WHERE description IN (SELECT description FROM transaction_tags)
+            DELETE FROM records_imported
+            WHERE description IN (SELECT description FROM tags)
         """)
         
-        # We no longer clear the transaction_tags table, keeping the tags for future matching
+        # We no longer clear the tags table, keeping the tags for future matching
         
         conn.commit()
         cur.close()
@@ -1060,7 +1065,7 @@ def push_to_history():
 
 @app.route('/export_history')
 def export_history():
-    """Export all transactions from transaction_history as CSV file"""
+    """Export all transactions from records_history as CSV file"""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1068,7 +1073,7 @@ def export_history():
         # Get all transactions from history
         cur.execute("""
             SELECT date, description, vendor, amount, tag, imported_date
-            FROM transaction_history 
+            FROM records_history 
             ORDER BY date, description
         """)
         
@@ -1103,7 +1108,7 @@ def export_history():
         return Response(
             csv_content,
             mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=transaction_history.csv"}
+            headers={"Content-disposition": "attachment; filename=records_history.csv"}
         )
         
     except Exception as e:
@@ -1136,7 +1141,7 @@ def import_tags():
                 # Clear existing tags if requested
                 clear_existing = request.form.get('clear_existing') == 'yes'
                 if clear_existing:
-                    cur.execute("TRUNCATE transaction_tags")
+                    cur.execute("TRUNCATE tags")
                 
                 # Process each line
                 tags_imported = 0
@@ -1161,7 +1166,7 @@ def import_tags():
                         
                         # Insert or update tag
                         cur.execute("""
-                            INSERT INTO transaction_tags (description, tag)
+                            INSERT INTO tags (description, tag)
                             VALUES (%s, %s)
                             ON CONFLICT (description) 
                             DO UPDATE SET tag = EXCLUDED.tag
@@ -1206,7 +1211,7 @@ def import_history():
                 # Clear existing history if requested
                 clear_existing = request.form.get('clear_existing') == 'yes'
                 if clear_existing:
-                    cur.execute("TRUNCATE transaction_history")
+                    cur.execute("TRUNCATE records_history")
                 
                 # Process each line
                 history_imported = 0
@@ -1234,7 +1239,7 @@ def import_history():
                         
                         # Insert into transaction_history
                         cur.execute("""
-                            INSERT INTO transaction_history (date, description, vendor, amount, tag)
+                            INSERT INTO records_history (date, description, vendor, amount, tag)
                             VALUES (%s, %s, %s, %s, %s)
                             ON CONFLICT DO NOTHING
                         """, (date, description, vendor, amount, tag))
@@ -1251,6 +1256,82 @@ def import_history():
     
     return redirect(url_for('index'))
 
+@app.route('/import_records', methods=['POST'])
+def import_records():
+    """Import new transactions from a CSV file"""
+    if 'records_file' not in request.files:
+        return redirect(url_for('index'))
+    
+    file = request.files['records_file']
+    if file.filename == '':
+        return redirect(url_for('index'))
+    
+    if file:
+        try:
+            # Read the CSV data
+            csv_data = file.read().decode('utf-8')
+            lines = csv_data.strip().split('\n')
+            
+            # Skip header line
+            if len(lines) > 1:
+                header = lines[0]
+                data_lines = lines[1:]
+                
+                conn = get_db_connection()
+                cur = conn.cursor()
+                
+                # Clear existing records if requested
+                clear_existing = request.form.get('clear_existing') == 'yes'
+                if clear_existing:
+                    cur.execute("TRUNCATE records_imported")
+                
+                # Process each line
+                records_imported = 0
+                for line in data_lines:
+                    # Handle quoted fields with commas
+                    parts = []
+                    in_quotes = False
+                    current_part = ''
+                    for char in line:
+                        if char == '"':
+                            in_quotes = not in_quotes
+                        elif char == ',' and not in_quotes:
+                            parts.append(current_part)
+                            current_part = ''
+                        else:
+                            current_part += char
+                    parts.append(current_part)
+                    
+                    if len(parts) >= 4:  # Need at least date, description, vendor, amount
+                        date = parts[0].strip().strip('"')
+                        description = parts[1].strip().strip('"')
+                        vendor = parts[2].strip().strip('"')
+                        amount = parts[3].strip().strip('"')
+                        
+                        # Insert into records_imported
+                        cur.execute("""
+                            INSERT INTO records_imported (date, description, vendor, amount)
+                            VALUES (%s, %s, %s, %s)
+                            ON CONFLICT DO NOTHING
+                        """, (date, description, vendor, amount))
+                        records_imported += 1
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                # Auto-apply tags to newly imported records
+                if records_imported > 0:
+                    auto_tagged = auto_apply_tags()
+                    return redirect(url_for('index', records_imported=records_imported, auto_tagged=auto_tagged))
+                
+                return redirect(url_for('index', records_imported=records_imported))
+                
+        except Exception as e:
+            return f"Error importing records: {str(e)}"
+    
+    return redirect(url_for('index'))
+
 @app.route('/clear_database', methods=['POST'])
 def clear_database():
     """Clear database tables"""
@@ -1261,7 +1342,7 @@ def clear_database():
         cur = conn.cursor()
         
         for table in tables_to_clear:
-            if table in ['transactions', 'transaction_tags', 'transaction_history']:
+            if table in ['records_imported', 'tags', 'records_history']:
                 cur.execute(f"TRUNCATE {table}")
         
         conn.commit()

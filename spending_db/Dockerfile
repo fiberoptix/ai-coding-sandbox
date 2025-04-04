@@ -46,12 +46,17 @@ RUN mkdir -p /var/lib/postgresql/data && \
 # Create app directory
 WORKDIR /app
 
+# Create sample data directory
+RUN mkdir -p /app/sample_data
+
 # Copy application files
 COPY full-app.py /app/
-COPY transactions.csv /app/
 COPY init.sql /app/
 COPY templates/ /app/templates/
 COPY requirements.txt /app/
+
+# Move transaction.csv to sample_data directory (instead of root)
+COPY transactions.csv /app/sample_data/
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \
@@ -110,21 +115,8 @@ su postgres -c "psql -c \\"SELECT 1 FROM pg_database WHERE datname = '"'"'spendi
                psql -c \\"CREATE DATABASE spending_db;\\""\n\
 su postgres -c "psql -c \\"ALTER USER postgres WITH PASSWORD '"'"'postgres'"'"';\\""\n\
 \n\
-# Check if the transactions table exists and has data\n\
-TABLE_EXISTS=$(su postgres -c "psql -d spending_db -tAc \\"SELECT to_regclass('"'"'public.transactions'"'"');\\"" | grep -c "transactions" || echo "no")\n\
-ROW_COUNT=0\n\
-if [ "$TABLE_EXISTS" != "no" ] && [ "$TABLE_EXISTS" != "0" ]; then\n\
-    ROW_COUNT=$(su postgres -c "psql -d spending_db -tAc \\"SELECT COUNT(*) FROM transactions;\\"" || echo "0")\n\
-    ROW_COUNT=$(echo "$ROW_COUNT" | tr -d "[:space:]")\n\
-fi\n\
-\n\
-# Import data only if table doesn'"'"'t exist or is empty\n\
-if [ "$TABLE_EXISTS" = "no" ] || [ "$TABLE_EXISTS" = "0" ] || [ "$ROW_COUNT" = "0" ]; then\n\
-    echo "Transactions table doesn'"'"'t exist or is empty. Importing data from init.sql..."\n\
-    su postgres -c "psql -d spending_db -f /app/init.sql"\n\
-else\n\
-    echo "Transactions table already exists with $ROW_COUNT rows. Skipping data import."\n\
-fi\n\
+# We no longer automatically import transactions.csv\n\
+# Users will need to use the web UI to import data\n\
 \n\
 # Start the web application\n\
 echo "Starting web application..."\n\
