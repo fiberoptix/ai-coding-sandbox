@@ -48,7 +48,6 @@ WORKDIR /app
 
 # Copy application files
 COPY full-app.py /app/
-COPY migrate_tags.py /app/
 COPY transactions.csv /app/
 COPY init.sql /app/
 COPY templates/ /app/templates/
