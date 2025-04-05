@@ -16,4 +16,7 @@ spending_db/output.html
 spending_db/*.bak
 spending_db/webapp.log
 temp.txt
-temp2.txt 
+temp2.txt
+
+# Trash directory - ignore
+trash/ 
