@@ -34,7 +34,7 @@ This is the Beta version of the Financial Analyst application, building upon the
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ai-coding-sandbox.git
+git clone https://github.com/fiberoptix/ai-coding-sandbox.git
 cd ai-coding-sandbox/financial_analyst
 ```
 
