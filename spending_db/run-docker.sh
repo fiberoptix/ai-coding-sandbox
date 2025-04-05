@@ -68,6 +68,7 @@ case "$1" in
         BUILD_NUMBER=$BUILD_NUMBER docker-compose build
         BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is starting at http://localhost:5001"
+        echo -e "Build number: $BUILD_NUMBER"
         ;;
     start)
         echo "Starting Docker container..."
