@@ -204,7 +204,7 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Transaction Tagger</title>
+    <title>Data Import and Tagging</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
@@ -338,7 +338,7 @@ HTML_TEMPLATE = """
 <body>
     <div class="build-info">Build: {{ build_number }}</div>
     <div class="container">
-        <h1>Transaction Tagger</h1>
+        <h1>Data Import and Tagging</h1>
         <p>Tag your transactions to categorize spending patterns.</p>
         
         <div class="btn-group">
@@ -347,7 +347,6 @@ HTML_TEMPLATE = """
             <a href="/most_common"><button>Most Common</button></a>
             <a href="/monthly_summary"><button>Monthly Summary</button></a>
             <a href="/tag_summary"><button>Tag Summary</button></a>
-            <a href="/historical_analysis"><button>Historical Analysis</button></a>
         </div>
         
         <div id="importRecordsForm" class="file-import-form">
@@ -366,7 +365,7 @@ HTML_TEMPLATE = """
         </div>
         
         <div class="search-section" style="background-color: #e6ffe6; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #99cc99;">
-            <form method="GET" action="/">
+            <form method="GET" action="/data_import_tagging">
                 <span style="font-weight: bold; margin-right: 10px;">SEARCH:</span>
                 <input type="text" name="search" value="{{ search }}" placeholder="Search transactions..." autofocus>
                 <select name="filter">
@@ -554,7 +553,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-@app.route('/')
+@app.route('/data_import_tagging')
 def index():
     search = request.args.get('search', '')
     filter_type = request.args.get('filter', 'all')
@@ -1973,9 +1972,9 @@ MONTHLY_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
+            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/tag_summary">Tag Summary</a>
             <a href="/monthly_summary">Monthly Summary</a>
-            <a href="/historical_analysis">Historical Analysis</a>
         </div>
         
         <div class="stats">
@@ -2170,6 +2169,7 @@ TAG_SUMMARY_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
+            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/tag_summary">Tag Summary</a>
             <a href="/monthly_summary">Monthly Summary</a>
         </div>
@@ -2335,14 +2335,22 @@ def historical_analysis():
         
         # Get transactions for the selected filters with sorting
         transactions_query = f"""
-            SELECT date, description, amount, tag
+            SELECT date, description, amount, tag,
+                   EXTRACT(MONTH FROM date::date) as month_num,
+                   EXTRACT(DAY FROM date::date) as day_num
             FROM records_history
             WHERE {where_clause}
         """
         
         # Add sorting
         if sort == 'date':
-            transactions_query += f" ORDER BY date {sort_dir.upper()}"
+            # Sort by year, month, day numerically for chronological order
+            transactions_query += f"""
+                ORDER BY 
+                    EXTRACT(YEAR FROM date::date) {sort_dir.upper()},
+                    EXTRACT(MONTH FROM date::date) {sort_dir.upper()},
+                    EXTRACT(DAY FROM date::date) {sort_dir.upper()}
+            """
         elif sort == 'description':
             transactions_query += f" ORDER BY description {sort_dir.upper()}"
         elif sort == 'amount':
@@ -2358,21 +2366,30 @@ def historical_analysis():
         transactions = []
         
         for row in cur.fetchall():
-            date_str, description, amount, tx_tag = row
+            date_str, description, amount, tx_tag, month_num, day_num = row
             # Fix the date formatting - check if date_str is already a string or a datetime object
             formatted_date = ''
             if date_str:
                 if hasattr(date_str, 'strftime'):
-                    formatted_date = date_str.strftime('%Y-%m-%d')
+                    # Format as MM/DD/YYYY for better readability
+                    formatted_date = date_str.strftime('%m/%d/%Y')
                 else:
-                    # It's already a string, use it as is
-                    formatted_date = str(date_str)
+                    # It's already a string, try to parse and reformat
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(str(date_str), '%Y-%m-%d')
+                        formatted_date = date_obj.strftime('%m/%d/%Y')
+                    except:
+                        # Use as is if parsing fails
+                        formatted_date = str(date_str)
                     
             transactions.append({
                 'date': formatted_date,
                 'description': description,
                 'amount': amount,
-                'tag': tx_tag or ''
+                'tag': tx_tag or '',
+                'month_num': int(month_num) if month_num is not None else 0,
+                'day_num': int(day_num) if day_num is not None else 0
             })
         
         cur.close()
@@ -2528,7 +2545,7 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Historical Analysis</title>
+    <title>Gotham Engineering: Financial Analyst</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -2660,13 +2677,13 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
 <body>
     <div class="build-info">Build: {{ build_number }}</div>
     <div class="container">
-        <h1>Historical Analysis</h1>
+        <h1>Gotham Engineering: Financial Analyst</h1>
         
         <div class="nav-links">
             <a href="/">Home</a>
+            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/tag_summary">Tag Summary</a>
             <a href="/monthly_summary">Monthly Summary</a>
-            <a href="/historical_analysis">Historical Analysis</a>
         </div>
         
         <!-- Section 1: Tools -->
@@ -2917,6 +2934,10 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
 </body>
 </html>
 """
+
+@app.route('/')
+def home():
+    return historical_analysis()
 
 if __name__ == '__main__':
     # Initialize database tables
