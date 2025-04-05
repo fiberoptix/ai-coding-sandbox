@@ -1,8 +1,16 @@
 #!/bin/bash
 # Full QA check script for Financial Analyst application
 
+# Get build number from build_count.txt file
+BUILD_COUNT_FILE="./.build_info/build_count.txt"
+if [ -f "$BUILD_COUNT_FILE" ]; then
+  BUILD_COUNT=$(cat "$BUILD_COUNT_FILE")
+else
+  BUILD_COUNT="unknown"
+fi
+
 echo "=========== FINANCIAL ANALYST QA TEST ==========="
-echo "Build: $(curl -s http://localhost:5002/test_database | grep -o 'Build #[0-9]*')"
+echo "Build: $BUILD_COUNT"
 echo "Date: $(date)"
 echo ""
 
@@ -144,5 +152,9 @@ docker logs financial_analyst --tail 50 2>&1 | grep -i "error\|exception\|fail" 
 
 echo ""
 echo "========== QA TEST COMPLETE =========="
+echo "Build: $BUILD_COUNT"
+echo -e "Application is starting at \033[94mhttp://localhost:5002\033[0m"
+echo ""
+echo ""
 # Exit with error code 0 (success) - In a real scenario, you'd want to exit with 1 if critical tests fail
 exit 0

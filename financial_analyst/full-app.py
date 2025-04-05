@@ -2924,7 +2924,10 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
         
         <!-- Section 1: Tools -->
         <div class="section tools-section">
-            <h2>Analysis Tools</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Analysis Tools</h2>
+                <div class="dataset-info">Dataset: {{ earliest_date }} - {{ latest_date }}</div>
+            </div>
             <form method="GET" action="/historical_analysis">
                 <input type="hidden" name="sort" value="{{ sort }}">
                 <input type="hidden" name="dir" value="{{ sort_dir }}">
@@ -2977,8 +2980,7 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
                 </div>
             </form>
             
-            <!-- Dataset Date Range Info -->
-            <div class="dataset-info">Dataset: {{ earliest_date }} - {{ latest_date }}</div>
+            <!-- Dataset Date Range Info - Moved to be inline with the header -->
         </div>
         
         <!-- Section 2: Chart -->
