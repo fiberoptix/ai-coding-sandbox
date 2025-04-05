@@ -17,3 +17,8 @@ spending_db/*.bak
 spending_db/webapp.log
 temp.txt
 temp2.txt 
+
+# Backup files
+*.zip
+*_backup.zip
+*_backup/ 
