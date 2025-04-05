@@ -67,6 +67,17 @@ case "$1" in
         BUILD_NUMBER=$BUILD_NUMBER docker-compose up -d
         echo "Application is starting at http://localhost:5002"
         echo -e "Build number: $BUILD_NUMBER"
+        
+        # Wait for the application to fully initialize before running QA tests
+        echo "Waiting 15 seconds for application to initialize before running QA tests..."
+        sleep 15
+        
+        # Run QA tests
+        echo "Running QA tests..."
+        ./qa_test.sh
+        
+        # Print message about QA completion
+        echo -e "\nQA testing completed. Review results above for any issues."
         ;;
     start)
         echo "Starting Docker container..."
