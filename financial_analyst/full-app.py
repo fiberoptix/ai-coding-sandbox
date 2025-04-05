@@ -551,7 +551,7 @@ HTML_TEMPLATE = """
         <div style="margin-top: 20px;">
             <a href="/export_tags" download="transaction_tags.csv">Export Tags as CSV</a>
             <span style="margin: 0 10px;">|</span>
-            <a href="/export_history" download="transaction_history.csv">Export All Historical Transactions as CSV</a>
+            <a href="/export_history" download="transaction_history.csv">Export Transactions as CSV</a>
             <div style="margin-top: 15px;">
                 <form action="/import_tags" method="post" enctype="multipart/form-data">
                     <input type="file" name="tags_file" accept=".csv" required style="display: inline-block;">
@@ -857,12 +857,17 @@ def export_tags():
         cur.close()
         conn.close()
         
+        # Generate filename with date and time
+        from datetime import datetime
+        current_datetime = datetime.now().strftime("%Y.%m.%d_%H.%M")
+        filename = f"Analyst_Tags_{current_datetime}.csv"
+        
         # Create response with CSV file
         from flask import Response
         return Response(
             csv_content,
             mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=transaction_tags.csv"}
+            headers={"Content-disposition": f"attachment; filename={filename}"}
         )
         
     except Exception as e:
@@ -1245,12 +1250,17 @@ def export_history():
         cur.close()
         conn.close()
         
+        # Generate filename with date and time
+        from datetime import datetime
+        current_datetime = datetime.now().strftime("%Y.%m.%d_%H.%M")
+        filename = f"Analyst_Transactions_{current_datetime}.csv"
+        
         # Create response with CSV file
         from flask import Response
         return Response(
             csv_content,
             mimetype="text/csv",
-            headers={"Content-disposition": "attachment; filename=records_history.csv"}
+            headers={"Content-disposition": f"attachment; filename={filename}"}
         )
         
     except Exception as e:
