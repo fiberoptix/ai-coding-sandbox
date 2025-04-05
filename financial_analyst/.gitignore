@@ -1,0 +1,19 @@
+# Transaction data files (sensitive financial information)
+*_transactions.csv
+*.csv
+spending_db/*.csv
+spending_db/amex_transactions.csv
+spending_db/visa_transactions.csv
+spending_db/transactions.csv
+
+# Build info and backups
+spending_db/Backups/
+spending_db/.build_info/build_count.txt
+.DS_Store
+spending_db/.DS_Store
+spending_db/error_output.txt
+spending_db/output.html
+spending_db/*.bak
+spending_db/webapp.log
+temp.txt
+temp2.txt 
