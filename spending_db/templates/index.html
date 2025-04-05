@@ -79,6 +79,16 @@
             border-radius: 4px;
             font-size: 16px;
         }
+        .search-container {
+            display: flex;
+            align-items: center;
+        }
+        .search-mode {
+            margin-right: 10px;
+        }
+        .filter-container {
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
@@ -86,16 +96,38 @@
         <h1>Transaction Tagger</h1>
         <p>Tag your transactions to categorize spending patterns.</p>
         
-        <input type="text" id="searchBox" class="search-box" placeholder="Search descriptions..." onkeyup="filterTable()">
+        <div class="search-container">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search descriptions..." onkeyup="debouncedFilter()" onkeypress="handleKeyPress(event)">
+            
+            <div class="filter-container">
+                <select name="filter" id="filterSelect" onchange="document.querySelector('form.search-form').submit()">
+                    <option value="all" {% if filter == 'all' %}selected{% endif %}>All transactions</option>
+                    <option value="tagged" {% if filter == 'tagged' %}selected{% endif %}>Tagged only</option>
+                    <option value="untagged" {% if filter == 'untagged' %}selected{% endif %}>Untagged only</option>
+                </select>
+            </div>
+        </div>
+        
+        <div id="tagAllSection" style="display: none;">
+            <form action="/tag_all" method="post" id="tagAllForm">
+                <input type="hidden" name="search" id="tagAllSearch">
+                <input type="hidden" name="search_mode" id="tagAllSearchMode">
+                <input type="hidden" name="filter" id="tagAllFilter">
+                <div class="tag-all-container">
+                    <label for="tag_all">Tag all results as:</label>
+                    <input type="text" name="tag" id="tag_all" class="tag-input" placeholder="Enter tag for all results">
+                    <button type="submit" class="tag-submit">Apply to All Results</button>
+                </div>
+            </form>
+        </div>
         
         <div style="max-height: 600px; overflow-y: auto;">
             <table id="transactionTable">
                 <thead>
                     <tr>
                         <th>Description</th>
-                        <th>Vendor</th>
                         <th>Count</th>
-                        <th>Total Amount</th>
+                        <th>Total</th>
                         <th>Tag</th>
                     </tr>
                 </thead>
@@ -103,17 +135,18 @@
                     {% for pair in transaction_pairs %}
                     <tr>
                         <td>{{ pair.description }}</td>
-                        <td>{{ pair.vendor }}</td>
                         <td>{{ pair.count }}</td>
-                        <td>${{ "%.2f"|format(pair.total_amount) }}</td>
+                        <td>{{ "${:,.2f}".format(pair.total_amount) }}</td>
                         <td>
-                            <form class="tag-form" action="/update_tag" method="post">
+                            <form action="/update_tag" method="post">
                                 <input type="hidden" name="description" value="{{ pair.description }}">
-                                <input type="hidden" name="vendor" value="{{ pair.vendor }}">
-                                <input type="text" name="tag" class="tag-input" 
-                                       value="{{ existing_tags.get((pair.description, pair.vendor), '') }}" 
-                                       placeholder="Enter tag...">
-                                <button type="submit" class="tag-submit">Save</button>
+                                <input type="hidden" name="amount" value="{{ pair.amount }}">
+                                <input type="hidden" name="page" value="{{ page }}">
+                                <input type="hidden" name="search" value="{{ search }}">
+                                <input type="hidden" name="search_mode" value="description">
+                                <input type="hidden" name="filter" value="{{ filter }}">
+                                <input type="text" name="tag" value="{{ existing_tags.get((pair.description, pair.amount), '') }}">
+                                <button type="submit">Save</button>
                             </form>
                         </td>
                     </tr>
@@ -124,9 +157,10 @@
         
         <div class="stats">
             <h3>Statistics</h3>
-            <p>Total unique transactions: {{ transaction_pairs|length }}</p>
-            <p>Total tagged: {{ existing_tags|length }}</p>
-            <p>Remaining to tag: {{ transaction_pairs|length - existing_tags|length }}</p>
+            <p>Total transactions: {{ total_transactions }}</p>
+            <p>Total unique transactions: {{ transactions|length }}</p>
+            <p>Total tagged: {{ tagged_count }}</p>
+            <p>Remaining to tag: {{ transactions|length - tagged_count }}</p>
         </div>
     </div>
 
@@ -136,22 +170,31 @@
             const filter = input.value.toUpperCase();
             const table = document.getElementById('transactionTable');
             const rows = table.getElementsByTagName('tr');
-
+            let visibleRows = 0;
+            
             for (let i = 1; i < rows.length; i++) {
                 const descriptionCell = rows[i].getElementsByTagName('td')[0];
-                const vendorCell = rows[i].getElementsByTagName('td')[1];
                 
-                if (descriptionCell && vendorCell) {
+                if (descriptionCell) {
                     const descriptionText = descriptionCell.textContent || descriptionCell.innerText;
-                    const vendorText = vendorCell.textContent || vendorCell.innerText;
                     
-                    if (descriptionText.toUpperCase().indexOf(filter) > -1 || 
-                        vendorText.toUpperCase().indexOf(filter) > -1) {
+                    if (descriptionText.toUpperCase().indexOf(filter) > -1) {
                         rows[i].style.display = '';
+                        visibleRows++;
                     } else {
                         rows[i].style.display = 'none';
                     }
                 }
+            }
+            
+            const tagAllSection = document.getElementById('tagAllSection');
+            if (filter && visibleRows > 0) {
+                tagAllSection.style.display = 'block';
+                document.getElementById('tagAllSearch').value = input.value;
+                document.getElementById('tagAllSearchMode').value = 'description';
+                document.getElementById('tagAllFilter').value = document.getElementById('filterSelect').value;
+            } else {
+                tagAllSection.style.display = 'none';
             }
         }
     </script>
