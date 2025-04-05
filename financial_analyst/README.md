@@ -48,7 +48,7 @@ cd ai-coding-sandbox/financial_analyst
 ./run-docker.sh rebuild
 ```
 
-4. Access the application at: http://localhost:5001
+4. Access the application at: http://localhost:5002
 
 ## Usage
 
