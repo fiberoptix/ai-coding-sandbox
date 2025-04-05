@@ -374,6 +374,7 @@ HTML_TEMPLATE = """
             <a href="/monthly_summary"><button>Monthly Statements</button></a>
             <a href="/transaction_summary"><button>Transaction Summary</button></a>
             <a href="/budgets"><button>Budget Settings</button></a>
+            <a href="/data_import_tagging"><button style="background-color: #FF8C00; color: white;">Data Import and Tagging</button></a>
         </div>
         
         <div id="importRecordsForm" class="file-import-form">
@@ -2266,10 +2267,10 @@ MONTHLY_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
-            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/transaction_summary">Transaction Summary</a>
             <a href="/monthly_summary">Monthly Statements</a>
             <a href="/budgets">Budget Settings</a>
+            <a href="/data_import_tagging" style="color: #FF8C00; font-weight: bold;">Data Import and Tagging</a>
         </div>
         
         <div class="stats">
@@ -2517,10 +2518,10 @@ TRANSACTION_SUMMARY_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
-            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/transaction_summary">Transaction Summary</a>
             <a href="/monthly_summary">Monthly Statements</a>
             <a href="/budgets">Budget Settings</a>
+            <a href="/data_import_tagging" style="color: #FF8C00; font-weight: bold;">Data Import and Tagging</a>
         </div>
         
         <div class="filter-section">
@@ -2915,10 +2916,10 @@ HISTORICAL_ANALYSIS_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
-            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/transaction_summary">Transaction Summary</a>
             <a href="/monthly_summary">Monthly Statements</a>
             <a href="/budgets">Budget Settings</a>
+            <a href="/data_import_tagging" style="color: #FF8C00; font-weight: bold;">Data Import and Tagging</a>
         </div>
         
         <!-- Section 1: Tools -->
@@ -3659,10 +3660,10 @@ BUDGET_TEMPLATE = """
         
         <div class="nav-links">
             <a href="/">Home</a>
-            <a href="/data_import_tagging">Data Import and Tagging</a>
             <a href="/transaction_summary">Transaction Summary</a>
             <a href="/monthly_summary">Monthly Statements</a>
             <a href="/budgets">Budget Settings</a>
+            <a href="/data_import_tagging" style="color: #FF8C00; font-weight: bold;">Data Import and Tagging</a>
         </div>
         
         {% if updated_tag %}
