@@ -2,6 +2,8 @@
 
 This is the Beta version of the Financial Analyst application, building upon the successful Alpha version (previously known as "spending_db"). The Financial Analyst application helps you track, analyze, and visualize your financial data.
 
+<img src="images/dashboard.png" width="900" alt="Financial Analyst Dashboard">
+
 ## Features
 
 ### Core Features (from Alpha)
