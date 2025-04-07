@@ -1738,9 +1738,18 @@ def transaction_summary_view():
         sort_dir = request.args.get('dir', 'desc')
         tag_filter = request.args.get('tag', 'all')
         
-        # Get optional year and month filters
+        # Get optional year and month filters with validation
         year = request.args.get('year', 'all')
         month = request.args.get('month', 'all')
+        
+        # Validate month parameter
+        if month != 'all':
+            try:
+                month = int(month)
+                if month < 1 or month > 12:
+                    month = 'all'
+            except (ValueError, TypeError):
+                month = 'all'
         
         # Connect to the database
         conn = get_db_connection()
@@ -2631,10 +2640,10 @@ TRANSACTION_SUMMARY_TEMPLATE = """
                             <input type="checkbox" id="toggle-all-tags" checked>
                             <span class="toggle-all" onclick="toggleAllTags()">All</span>
                         </th>
-                        <th><a href="/transaction_summary?sort=tag&dir={% if sort == 'tag' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month }}&tag={{ tag }}">Tag {% if sort == 'tag' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                        <th><a href="/transaction_summary?sort=amount&dir={% if sort == 'amount' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month }}&tag={{ tag }}">Amount {% if sort == 'amount' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                        <th><a href="/transaction_summary?sort=count&dir={% if sort == 'count' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month }}&tag={{ tag }}">Transactions {% if sort == 'count' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
-                        <th><a href="/transaction_summary?sort=monthly_avg&dir={% if sort == 'monthly_avg' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month }}&tag={{ tag }}">Monthly Average {% if sort == 'monthly_avg' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                        <th><a href="/transaction_summary?sort=tag&dir={% if sort == 'tag' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month if month == 'all' else month|int }}&tag={{ tag }}">Tag {% if sort == 'tag' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                        <th><a href="/transaction_summary?sort=amount&dir={% if sort == 'amount' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month if month == 'all' else month|int }}&tag={{ tag }}">Amount {% if sort == 'amount' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                        <th><a href="/transaction_summary?sort=count&dir={% if sort == 'count' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month if month == 'all' else month|int }}&tag={{ tag }}">Transactions {% if sort == 'count' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
+                        <th><a href="/transaction_summary?sort=monthly_avg&dir={% if sort == 'monthly_avg' and sort_dir == 'asc' %}desc{% else %}asc{% endif %}&year={{ year }}&month={{ month if month == 'all' else month|int }}&tag={{ tag }}">Monthly Average {% if sort == 'monthly_avg' %}{% if sort_dir == 'asc' %}▲{% else %}▼{% endif %}{% endif %}</a></th>
                     </tr>
                 </thead>
                 <tbody>
