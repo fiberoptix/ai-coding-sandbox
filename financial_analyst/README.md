@@ -26,6 +26,8 @@ This is the Beta version of the Financial Analyst application, building upon the
 - Income vs. expense separation
 - Net worth tracking
 
+<img src="images/dashboard2.png" width="900" alt="Financial Analysis and Trends">
+
 ## Getting Started
 
 ### Prerequisites
