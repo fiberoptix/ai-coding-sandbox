@@ -7,7 +7,7 @@ This is the Beta version of the Financial Analyst application, building upon the
 ## Features
 
 ### Core Features (from Alpha)
-- Import transactions from CSV files
+- Import transactions from on-line Banking and Credit Card statements in CSV format
 - Tag transactions for categorization
 - Historical transaction analysis
 - Monthly spending statements
