@@ -1,5 +1,5 @@
 services:
-  transaction-tagger:
+  financial_analyst:
     build:
       context: .
       dockerfile: Dockerfile
