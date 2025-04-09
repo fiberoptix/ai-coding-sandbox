@@ -74,5 +74,8 @@ python /app/full-app.py' > /app/start.sh
 
 RUN chmod +x /app/start.sh
 
+# Expose port 5002
+EXPOSE 5002
+
 # Command to start the application
 CMD ["/app/start.sh"] 
